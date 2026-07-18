@@ -117,6 +117,16 @@
                         </button>
                     </div>
                     <div class="o_aichat_set__hint" t-esc="state.enterToSend ? 'Shift+Enter for a new line.' : 'Ctrl/⌘+Enter to send.'"/>
+                    <div class="o_aichat_set o_aichat_set--switch">
+                        <span class="o_aichat_set__label">Share screen context</span>
+                        <button t-attf-class="o_aichat_switch {{ state.shareContext ? 'is-on' : '' }}"
+                                role="switch" t-att-aria-checked="state.shareContext ? 'true' : 'false'"
+                                aria-label="Share screen context"
+                                t-on-click="() => this.setPref('shareContext', !state.shareContext)">
+                            <span class="o_aichat_switch__knob"/>
+                        </button>
+                    </div>
+                    <div class="o_aichat_set__hint">Lets the assistant see which page or record you're on.</div>
 
                     <div class="o_aichat_set__sep"/>
                     <button class="o_aichat_set__action" t-on-click="startNewChat">

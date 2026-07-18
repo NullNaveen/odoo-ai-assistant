@@ -21,6 +21,8 @@ actions. Always as the logged-in user, always within Odoo's access rights.
 ## Highlights
 
 - **Answers from your data** — "How many contacts do we have?", "Show the 5 most recent sale orders."
+- **Knows what's on your screen** — ask "what am I looking at?" or say "confirm this order" and it
+  resolves to the record you have open (privacy toggle in settings).
 - **Totals & reporting** — sums, averages and counts computed in the database with one query
   (revenue, COGS, margins — grouped by account, month, anything), never by paging thousands of rows.
 - **Creates & edits** — draft a sales order, update a field, translate a record.

@@ -22,6 +22,7 @@ const DEFAULTS = {
     dark: false,
     textSize: "m",
     enterToSend: true,
+    shareContext: true,   // send the current page/record to the assistant with each message
     width: 400,           // classic default footprint (~ the original 380x600 card)
     height: 620,
     maximized: false,
@@ -57,6 +58,7 @@ export class AIChatbot extends Component {
             dark: prefs.dark,
             textSize: prefs.textSize,
             enterToSend: prefs.enterToSend,
+            shareContext: prefs.shareContext,
             width: prefs.width,
             height: prefs.height,
             maximized: prefs.maximized,
@@ -121,6 +123,7 @@ export class AIChatbot extends Component {
             if (!SIZES.includes(p.textSize)) p.textSize = DEFAULTS.textSize;
             p.dark = !!p.dark;
             p.enterToSend = p.enterToSend !== false;
+            p.shareContext = p.shareContext !== false;
             p.maximized = !!p.maximized;
             p.width = Number.isFinite(p.width) ? p.width : DEFAULTS.width;
             p.height = Number.isFinite(p.height) ? p.height : DEFAULTS.height;
@@ -132,10 +135,10 @@ export class AIChatbot extends Component {
 
     _savePrefs() {
         try {
-            const { theme, dark, textSize, enterToSend, width, height, maximized } = this.state;
+            const { theme, dark, textSize, enterToSend, shareContext, width, height, maximized } = this.state;
             window.localStorage.setItem(
                 PREFS_KEY,
-                JSON.stringify({ theme, dark, textSize, enterToSend, width, height, maximized })
+                JSON.stringify({ theme, dark, textSize, enterToSend, shareContext, width, height, maximized })
             );
         } catch (e) {
             /* storage disabled/full — appearance simply won't persist; not fatal. */
@@ -469,6 +472,37 @@ export class AIChatbot extends Component {
         }
     }
 
+    /**
+     * What the user is looking at right now, so "this order" means the record on screen.
+     * Best-effort and privacy-gated: URL + page title always work; model/id parse from the
+     * two Odoo URL shapes (/odoo/<model>/<id> when the path segment is a model name, and the
+     * legacy #model=...&id=... hash). When the path uses an action slug the title still
+     * identifies the record and the assistant can search for it.
+     */
+    _uiContext() {
+        if (!this.state.shareContext) return null;
+        try {
+            const url = window.location.pathname + window.location.search + window.location.hash;
+            const ctx = { url: url.slice(0, 300), title: (document.title || "").slice(0, 200) };
+            const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+            let model = hash.get("model");
+            let resId = parseInt(hash.get("id"), 10);
+            if (!model) {
+                const m = window.location.pathname.match(/\/odoo\/([\w.]+\.[\w.]+)(?:\/(\d+))?/);
+                if (m) { model = m[1]; resId = parseInt(m[2], 10); }
+            }
+            if (!resId) {
+                const tail = window.location.pathname.match(/\/(\d+)(?:$|\?)/);
+                if (tail) resId = parseInt(tail[1], 10);
+            }
+            if (model) ctx.model = model;
+            if (Number.isFinite(resId)) ctx.res_id = resId;
+            return ctx;
+        } catch (e) {
+            return null;
+        }
+    }
+
     async sendMessage() {
         if (!this.state.inputValue.trim() || this.state.isLoading) return;
 
@@ -482,6 +516,7 @@ export class AIChatbot extends Component {
             const response = await this.orm.call("ai.chatbot.agent", "process_message", [
                 this.state.sessionId,
                 userMessage,
+                this._uiContext(),
             ]);
             if (response?.session_id) {
                 this.state.sessionId = response.session_id;

@@ -257,7 +257,7 @@ class AIAgent(models.AbstractModel):
     # Main entrypoint
     # ---------------------------------------------------------------------
     @api.model
-    def process_message(self, session_id, message_content):
+    def process_message(self, session_id, message_content, ui_context=None):
         import asyncio
 
         session = self.env['ai.chat.session'].browse(session_id) if session_id else self.env['ai.chat.session']
@@ -366,6 +366,29 @@ class AIAgent(models.AbstractModel):
                         "update_odoo_record_translations again. The action is already proposed.\n"
                         "3. If the user declines or changes topic, call cancel_pending_action.\n"
                         "4. NEVER ask for confirmation more than once total for the same action."
+                    )))
+
+            # UI CONTEXT — what the user is looking at right now, sent by their own browser.
+            # Transient (never stored in ai.chat.message): screens change between turns, and a
+            # stale "you are viewing X" in history would mislead later answers. User-supplied,
+            # so it is sanitised to known scalar keys and length-capped.
+            if isinstance(ui_context, dict):
+                safe = {}
+                for key, cap in (("url", 300), ("title", 200), ("model", 120)):
+                    val = ui_context.get(key)
+                    if isinstance(val, str) and val.strip():
+                        safe[key] = val.strip()[:cap]
+                rid = ui_context.get("res_id")
+                if isinstance(rid, int) and rid > 0:
+                    safe["res_id"] = rid
+                if safe:
+                    parts = [f"{k}={v}" for k, v in safe.items()]
+                    history.append(SystemMessage(content=(
+                        "UI CONTEXT — the user is currently looking at this in Odoo: "
+                        + ", ".join(parts) + ". "
+                        "If they say 'this record', 'this order', 'here' or similar, they mean "
+                        "what is on this screen. When model and res_id are given, use your read "
+                        "tools on exactly that record instead of guessing or asking which one."
                     )))
 
             final_text = None
