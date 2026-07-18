@@ -15,10 +15,13 @@ class AIPendingAction(models.Model):
         ('update', 'Update'),
         ('delete', 'Delete'),
         ('translate', 'Update Translations'),
+        ('method', 'Run Action / Button'),
     ], required=True)
 
     model_name = fields.Char(required=True)
     domain = fields.Char(required=True, help="JSON-encoded search domain")
+    record_ids = fields.Char(help="JSON list of record ids snapshotted at proposal time")
+    method_name = fields.Char(help="Record method / button to invoke (method action only)")
     values = fields.Char(help="JSON-encoded write values (update only)")
     field_name = fields.Char(help="Translated field name (translate only)")
     translations = fields.Char(help="JSON-encoded lang->value map (translate only)")

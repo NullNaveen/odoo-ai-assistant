@@ -17,26 +17,14 @@ class AIChatSession(models.Model):
 
     @api.model
     def get_current_session(self):
-        chat_color = self.env['ir.config_parameter'].sudo().get_param('odoo_ai_chatbot.ai_chat_color', '#714B67')
         session = self.search([('user_id', '=', self.env.uid)], limit=1, order='create_date desc')
-        
         if session:
-            messages = []
-            for msg in session.message_ids.sorted('create_date'):
-                messages.append({
-                    'role': msg.role,
-                    'content': msg.content
-                })
-            return {
-                'session_id': session.id,
-                'messages': messages,
-                'chat_color': chat_color
-            }
-        return {
-            'session_id': False,
-            'messages': [],
-            'chat_color': chat_color
-        }
+            messages = [
+                {'role': msg.role, 'content': msg.content}
+                for msg in session.message_ids.sorted('create_date')
+            ]
+            return {'session_id': session.id, 'messages': messages}
+        return {'session_id': False, 'messages': []}
 
 class AIChatMessage(models.Model):
     _name = 'ai.chat.message'
