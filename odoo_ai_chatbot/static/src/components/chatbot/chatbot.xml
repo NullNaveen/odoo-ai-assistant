@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <!--
+      AI Assistant — resizable panel with two themes.
+
+        theme "classic" (default)  the repo-original widget look: gradient header with a ⚡ bolt,
+                                    a magic-wand avatar, accent-gradient user bubbles.
+        theme "studio"             the mono/hairline "ledger" look (the previous redesign),
+                                    kept as a selectable theme.
+
+      One DOM, skinned by [data-aic-theme] + [data-aic-dark] + [data-aic-size]. The panel is a
+      floating card anchored bottom-right, resizable by dragging its top edge (taller / upward),
+      left edge (wider / leftward) or top-left corner (both). A gear opens per-window settings.
+
+      Preserved from every prior version: RPC contract, markdown pipeline, copy-to-clipboard on
+      code/tables, XSS handling on user text, session history, the server-side confirmation gate.
+    -->
+    <t t-name="odoo_ai_chatbot.SystrayItem" owl="1">
+        <div class="o_systray_ai_chatbot_item">
+            <!-- Systray entry: a magic wand that spins on hover (the classic identity). -->
+            <button class="o_aichat_trigger"
+                    t-att-class="state.isOpen ? 'is-open' : ''"
+                    t-on-click="toggleChat"
+                    t-att-aria-expanded="state.isOpen ? 'true' : 'false'"
+                    aria-label="AI Assistant"
+                    title="AI Assistant">
+                <i class="fa fa-magic o_aichat_wand" role="img" aria-hidden="true"/>
+            </button>
+
+            <div t-if="state.isOpen"
+                 class="o_aichat_panel"
+                 t-att-class="state.maximized ? 'is-max' : ''"
+                 t-att-data-aic-theme="state.theme"
+                 t-att-data-aic-dark="state.dark ? '1' : '0'"
+                 t-att-data-aic-size="state.textSize"
+                 t-att-style="panelStyle">
+
+                <!-- Resize grips. Hidden by CSS when maximized / on mobile. -->
+                <div class="o_aichat_grip o_aichat_grip--top"    t-on-pointerdown="(ev) => this.onGripDown(ev, 'y')"/>
+                <div class="o_aichat_grip o_aichat_grip--left"   t-on-pointerdown="(ev) => this.onGripDown(ev, 'x')"/>
+                <div class="o_aichat_grip o_aichat_grip--corner" t-on-pointerdown="(ev) => this.onGripDown(ev, 'xy')"/>
+
+                <header class="o_aichat_head">
+                    <div class="o_aichat_head__id">
+                        <span class="o_aichat_head__mark">
+                            <i t-if="state.theme === 'classic'" class="fa fa-bolt o_aichat_bolt" aria-hidden="true"/>
+                            <t t-else="" t-call="odoo_ai_chatbot.Mark"/>
+                        </span>
+                        <span class="o_aichat_head__label">AI Assistant</span>
+                    </div>
+                    <div class="o_aichat_head__tools">
+                        <button class="o_aichat_btn" title="New conversation" aria-label="New conversation" t-on-click="startNewChat">
+                            <i class="fa fa-plus" aria-hidden="true"/>
+                        </button>
+                        <button class="o_aichat_btn o_aichat_gear"
+                                t-att-class="state.settingsOpen ? 'is-on' : ''"
+                                title="Settings" aria-label="Settings"
+                                t-att-aria-expanded="state.settingsOpen ? 'true' : 'false'"
+                                t-on-click="toggleSettings">
+                            <i class="fa fa-cog" aria-hidden="true"/>
+                        </button>
+                        <button class="o_aichat_btn"
+                                t-att-title="state.maximized ? 'Restore' : 'Maximize'"
+                                t-att-aria-label="state.maximized ? 'Restore' : 'Maximize'"
+                                t-on-click="toggleMaximize">
+                            <i t-attf-class="fa {{ state.maximized ? 'fa-compress' : 'fa-expand' }}" aria-hidden="true"/>
+                        </button>
+                        <button class="o_aichat_btn" title="Close" aria-label="Close" t-on-click="closeChat">
+                            <i class="fa fa-times" aria-hidden="true"/>
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Settings: per-window appearance + behaviour. Just the necessary controls. -->
+                <div t-if="state.settingsOpen" class="o_aichat_settings" role="menu" aria-label="Assistant settings">
+                    <div class="o_aichat_set">
+                        <span class="o_aichat_set__label">Theme</span>
+                        <div class="o_aichat_seg" role="group" aria-label="Theme">
+                            <button t-att-class="state.theme === 'classic' ? 'is-on' : ''" t-on-click="() => this.setPref('theme', 'classic')">Classic</button>
+                            <button t-att-class="state.theme === 'studio' ? 'is-on' : ''" t-on-click="() => this.setPref('theme', 'studio')">Studio</button>
+                        </div>
+                    </div>
+                    <div class="o_aichat_set">
+                        <span class="o_aichat_set__label">Appearance</span>
+                        <div class="o_aichat_seg" role="group" aria-label="Appearance">
+                            <button t-att-class="!state.dark ? 'is-on' : ''" t-on-click="() => this.setPref('dark', false)">Light</button>
+                            <button t-att-class="state.dark ? 'is-on' : ''" t-on-click="() => this.setPref('dark', true)">Dark</button>
+                        </div>
+                    </div>
+                    <div class="o_aichat_set">
+                        <span class="o_aichat_set__label">Text size</span>
+                        <div class="o_aichat_seg o_aichat_seg--size" role="group" aria-label="Text size">
+                            <button t-att-class="state.textSize === 's' ? 'is-on' : ''" t-on-click="() => this.setPref('textSize', 's')" title="Small"><span style="font-size:11px">A</span></button>
+                            <button t-att-class="state.textSize === 'm' ? 'is-on' : ''" t-on-click="() => this.setPref('textSize', 'm')" title="Medium"><span style="font-size:13px">A</span></button>
+                            <button t-att-class="state.textSize === 'l' ? 'is-on' : ''" t-on-click="() => this.setPref('textSize', 'l')" title="Large"><span style="font-size:16px">A</span></button>
+                        </div>
+                    </div>
+                    <div class="o_aichat_set o_aichat_set--switch">
+                        <span class="o_aichat_set__label">Enter sends message</span>
+                        <button t-attf-class="o_aichat_switch {{ state.enterToSend ? 'is-on' : '' }}"
+                                role="switch" t-att-aria-checked="state.enterToSend ? 'true' : 'false'"
+                                aria-label="Enter sends message"
+                                t-on-click="() => this.setPref('enterToSend', !state.enterToSend)">
+                            <span class="o_aichat_switch__knob"/>
+                        </button>
+                    </div>
+                    <div class="o_aichat_set__hint" t-esc="state.enterToSend ? 'Shift+Enter for a new line.' : 'Ctrl/⌘+Enter to send.'"/>
+
+                    <div class="o_aichat_set__sep"/>
+                    <button class="o_aichat_set__action" t-on-click="startNewChat">
+                        <i class="fa fa-plus" aria-hidden="true"/><span>New conversation</span>
+                    </button>
+                    <button class="o_aichat_set__action" t-on-click="resetSize">
+                        <i class="fa fa-refresh" aria-hidden="true"/><span>Reset size</span>
+                    </button>
+                </div>
+
+                <div class="o_aichat_log" t-ref="messagesContainer">
+                    <!-- Empty: hands over real openers instead of a canned greeting. -->
+                    <div t-if="!state.messages.length and !state.isLoading" class="o_aichat_start">
+                        <p class="o_aichat_start__lead">Ask about this database.</p>
+                        <p class="o_aichat_start__sub">Records, counts, and changes — in plain language.</p>
+                        <ul class="o_aichat_start__list">
+                            <li t-foreach="starters" t-as="s" t-key="s">
+                                <button class="o_aichat_start__item" t-on-click="() => this.useStarter(s)">
+                                    <span class="o_aichat_start__caret">›</span><t t-esc="s"/>
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <t t-foreach="state.messages" t-as="msg" t-key="msg_index">
+                        <div t-attf-class="o_aichat_row {{ msg.role === 'user' ? 'is-user' : 'is-ai' }}">
+                            <div t-if="msg.role === 'assistant'" class="o_aichat_avatar" aria-hidden="true">
+                                <i class="fa fa-magic"/>
+                            </div>
+                            <div class="o_aichat_bubble">
+                                <div class="o_aichat_prose"><t t-out="msg.content"/></div>
+                            </div>
+                        </div>
+                    </t>
+
+                    <div t-if="state.isLoading" class="o_aichat_row is-ai">
+                        <div class="o_aichat_avatar" aria-hidden="true"><i class="fa fa-magic"/></div>
+                        <div class="o_aichat_bubble">
+                            <span class="o_aichat_wait" aria-label="Thinking"><i/><i/><i/></span>
+                        </div>
+                    </div>
+
+                    <div t-if="state.error" class="o_aichat_row is-error" role="alert">
+                        <div class="o_aichat_bubble"><div class="o_aichat_prose"><t t-esc="state.error"/></div></div>
+                    </div>
+                </div>
+
+                <div class="o_aichat_ask">
+                    <textarea class="o_aichat_field"
+                              placeholder="Ask about this database…"
+                              t-model="state.inputValue"
+                              t-on-keydown="onInputKeydown"
+                              t-att-disabled="state.isLoading"
+                              aria-label="Message"
+                              rows="1"/>
+                    <button class="o_aichat_send"
+                            t-on-click="sendMessage"
+                            aria-label="Send"
+                            t-att-disabled="state.isLoading || !state.inputValue.trim()">
+                        <span t-if="state.isLoading" class="o_aichat_send__spin" aria-hidden="true"/>
+                        <i t-elif="state.theme === 'classic'" class="fa fa-paper-plane" aria-hidden="true"/>
+                        <span t-else="" class="o_aichat_send__key" aria-hidden="true">↵</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </t>
+
+    <!--
+      The "prompt mark" — two chevrons enclosing a dot. Used by the Studio theme's header.
+      currentColor so it is correct on light AND dark chrome.
+    -->
+    <t t-name="odoo_ai_chatbot.Mark" owl="1">
+        <svg class="o_aichat_mark" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false">
+            <path d="M6.6 5.4 2.9 10l3.7 4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M13.4 5.4 17.1 10l-3.7 4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="10" cy="10" r="1.85" fill="currentColor"/>
+        </svg>
+    </t>
+</templates>

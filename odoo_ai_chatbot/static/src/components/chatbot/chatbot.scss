@@ -1,0 +1,532 @@
+// =============================================================================
+// AI Assistant — resizable panel, two themes (classic default / studio), per-window
+// light+dark, three text sizes. One DOM skinned by [data-aic-theme]/[data-aic-dark]/[data-aic-size].
+//
+// ⚠️ libsass compiles this: NEVER use CSS min()/max()/clamp() — SASS shadows them and dies on a
+// calc() argument, which is a DATABASE-WIDE style-compilation failure in Odoo. Clamping that needs
+// the viewport is done in JS (see chatbot.js). calc()/vh/vw/rgba() are fine.
+// =============================================================================
+
+// ---- token sets --------------------------------------------------------------
+@mixin tok-classic-light {
+    --aic-accent:#714B67; --aic-accent-ink:#ffffff; --aic-accent-soft:#f3edf1;
+    --aic-fill:#714B67; --aic-fill-2:#a26c93; --aic-fill-ink:#ffffff;
+    --aic-bg:#ffffff; --aic-surface:#ffffff; --aic-log-bg:#f7f8fa; --aic-bg-2:#eef0f3; --aic-field-bg:#f7f8fa;
+    --aic-line:rgba(0,0,0,.08); --aic-line-2:#e2e4e8;
+    --aic-ink:#2c3e50; --aic-ink-2:#67707c; --aic-ink-3:#7b7580;
+    --aic-ok:#2f7d5d; --aic-err:#b3261e; --aic-err-bg:#fdeceb;
+    --aic-head-ink:#ffffff; --aic-head-hover:rgba(255,255,255,.22);
+    --aic-focus-ring:rgba(162,108,147,.20);
+    --aic-radius:18px; --aic-shadow:0 15px 35px rgba(0,0,0,.18), 0 5px 15px rgba(0,0,0,.10);
+}
+@mixin tok-classic-dark {
+    --aic-accent:#d3a9c6; --aic-accent-ink:#221a1f; --aic-accent-soft:#2c2430;
+    --aic-fill:#7d5270; --aic-fill-2:#5a3c50; --aic-fill-ink:#ffffff;
+    --aic-bg:#17131a; --aic-surface:#1d1820; --aic-log-bg:#120f16; --aic-bg-2:#241f2a; --aic-field-bg:#241f2a;
+    --aic-line:rgba(255,255,255,.09); --aic-line-2:#3a3340;
+    --aic-ink:#ece7ea; --aic-ink-2:#b3a9b3; --aic-ink-3:#8f8592;
+    --aic-ok:#6fce9f; --aic-err:#f0908a; --aic-err-bg:#2c1a1a;
+    --aic-head-ink:#ffffff; --aic-head-hover:rgba(255,255,255,.18);
+    --aic-focus-ring:rgba(211,169,198,.28);
+    --aic-radius:18px; --aic-shadow:0 16px 40px rgba(0,0,0,.55);
+}
+@mixin tok-studio-light {
+    --aic-accent:#714B67; --aic-accent-ink:#ffffff; --aic-accent-soft:#f0e9ee;
+    --aic-fill:#714B67; --aic-fill-2:#8a5c7c; --aic-fill-ink:#ffffff;
+    --aic-bg:#fbfafb; --aic-surface:#fbfafb; --aic-log-bg:#fbfafb; --aic-bg-2:#f5f2f4; --aic-field-bg:#f5f2f4;
+    --aic-line:#e4dde2; --aic-line-2:#d6ccd3;
+    --aic-ink:#241d22; --aic-ink-2:#6f6470; --aic-ink-3:#766978;
+    --aic-ok:#2f7d5d; --aic-err:#a03434; --aic-err-bg:#fbf0f0;
+    --aic-head-ink:#6f6470; --aic-head-hover:#f5f2f4;
+    --aic-focus-ring:rgba(113,75,103,.18);
+    --aic-radius:12px; --aic-shadow:0 12px 30px rgba(0,0,0,.14);
+}
+@mixin tok-studio-dark {
+    --aic-accent:#c79ab8; --aic-accent-ink:#1b161a; --aic-accent-soft:#2e2530;
+    --aic-fill:#c79ab8; --aic-fill-2:#a87898; --aic-fill-ink:#1b161a;
+    --aic-bg:#1a161a; --aic-surface:#1a161a; --aic-log-bg:#1a161a; --aic-bg-2:#221d22; --aic-field-bg:#221d22;
+    --aic-line:#322b32; --aic-line-2:#453c45;
+    --aic-ink:#ece7ea; --aic-ink-2:#a99fa8; --aic-ink-3:#948a93;
+    --aic-ok:#6fce9f; --aic-err:#e88a8a; --aic-err-bg:#2b1e1e;
+    --aic-head-ink:#a99fa8; --aic-head-hover:#221d22;
+    --aic-focus-ring:rgba(199,154,184,.26);
+    --aic-radius:12px; --aic-shadow:0 12px 34px rgba(0,0,0,.5);
+}
+
+// ---- systray trigger: a magic wand that spins on hover -----------------------
+.o_systray_ai_chatbot_item {
+    display: flex;
+    align-items: center;
+
+    .o_aichat_trigger {
+        display: flex; align-items: center; justify-content: center;
+        width: 32px; height: 32px;
+        padding: 0; border: 0; border-radius: 6px;
+        background: transparent;
+        color: inherit;                 // correct on Odoo's light AND dark chrome
+        opacity: .85;
+        cursor: pointer;
+        transition: opacity .12s linear, background-color .12s linear;
+
+        &:hover         { opacity: 1; background: rgba(127,127,127,.16); }
+        &:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; opacity: 1; }
+        &:active        { background: rgba(127,127,127,.26); }
+        &.is-open       { opacity: 1; background: rgba(127,127,127,.22); }
+    }
+    .o_aichat_wand { font-size: 16px; line-height: 1; }
+    .o_aichat_trigger:hover .o_aichat_wand { animation: aicSpin 1.6s linear infinite; }
+}
+
+// ---- the panel ---------------------------------------------------------------
+.o_aichat_panel {
+    @include tok-classic-light;         // base fallback so tokens ALWAYS resolve (no white-on-white)
+    --aic-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --aic-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    position: fixed;
+    right: 16px; bottom: 16px;
+    z-index: 1055;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--aic-bg);
+    color: var(--aic-ink);
+    border: 1px solid var(--aic-line-2);
+    border-radius: var(--aic-radius);
+    box-shadow: var(--aic-shadow);
+    font-family: var(--aic-sans);
+    font-size: 14px;
+    animation: aicPanelIn .22s cubic-bezier(.175,.885,.32,1.10);
+}
+.o_aichat_panel[data-aic-theme="studio"]                   { @include tok-studio-light; }
+.o_aichat_panel[data-aic-theme="classic"][data-aic-dark="1"] { @include tok-classic-dark; }
+.o_aichat_panel[data-aic-theme="studio"][data-aic-dark="1"]  { @include tok-studio-dark; }
+
+.o_aichat_panel[data-aic-size="s"] { font-size: 13px; }
+.o_aichat_panel[data-aic-size="m"] { font-size: 14px; }
+.o_aichat_panel[data-aic-size="l"] { font-size: 15.5px; }
+
+// maximized: four insets fill the viewport; JS omits the inline size so this wins
+.o_aichat_panel.is-max { top: 16px; left: 16px; right: 16px; bottom: 16px; width: auto; height: auto; }
+
+// mobile: full-screen; !important beats the inline width/height
+@media (max-width: 767.98px) {
+    .o_aichat_panel {
+        top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+        width: auto !important; height: auto !important;
+        border-radius: 0; border: 0;
+    }
+}
+
+// ---- resize grips ------------------------------------------------------------
+.o_aichat_grip { position: absolute; z-index: 5; }
+.o_aichat_grip--top    { top: 0; left: 14px; right: 14px; height: 7px; cursor: ns-resize; }
+.o_aichat_grip--left   { left: 0; top: 14px; bottom: 14px; width: 7px; cursor: ew-resize; }
+.o_aichat_grip--corner { top: 0; left: 0; width: 16px; height: 16px; cursor: nwse-resize; }
+.o_aichat_grip--corner::after {
+    content: ""; position: absolute; top: 5px; left: 5px; width: 6px; height: 6px;
+    border-top: 2px solid var(--aic-head-ink); border-left: 2px solid var(--aic-head-ink);
+    opacity: .45;
+}
+.o_aichat_panel.is-max .o_aichat_grip { display: none; }
+@media (max-width: 767.98px) { .o_aichat_grip { display: none; } }
+body.o_aichat_resizing { user-select: none; }
+
+// ---- header ------------------------------------------------------------------
+.o_aichat_head {
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px 12px 12px 16px;
+    color: var(--aic-head-ink);
+    border-bottom: 1px solid var(--aic-line);
+
+    &__id    { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    &__mark  { display: flex; align-items: center; }
+    &__mark .o_aichat_mark { width: 19px; height: 19px; }
+    &__label {
+        font-size: .95rem; font-weight: 600; letter-spacing: .3px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    &__tools { display: flex; align-items: center; gap: 2px; }
+}
+.o_aichat_bolt { color: #ffd85a; font-size: 1.05rem; }
+
+[data-aic-theme="classic"] .o_aichat_head {
+    background: linear-gradient(135deg, var(--aic-fill), var(--aic-fill-2));
+    border-bottom: 0;
+    box-shadow: 0 2px 10px rgba(0,0,0,.10);
+}
+[data-aic-theme="studio"] .o_aichat_head__mark  { color: var(--aic-accent); }
+[data-aic-theme="studio"] .o_aichat_head__label {
+    font-family: var(--aic-mono);
+    font-size: .7rem; font-weight: 500;
+    letter-spacing: .1em; text-transform: uppercase;
+}
+
+.o_aichat_btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px;
+    padding: 0; border: 0; border-radius: 50%;
+    background: transparent;
+    color: var(--aic-head-ink);
+    cursor: pointer;
+    transition: background-color .12s linear, transform .12s ease;
+
+    .fa { font-size: .85rem; line-height: 1; }
+    &:hover         { background: var(--aic-head-hover); transform: scale(1.06); }
+    &:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
+    &.is-on         { background: var(--aic-head-hover); }
+}
+[data-aic-theme="studio"] .o_aichat_btn { border-radius: 6px; }
+
+// ---- settings popover --------------------------------------------------------
+.o_aichat_settings {
+    position: absolute; z-index: 6;
+    top: 54px; right: 10px;
+    width: 244px;
+    max-height: 320px; overflow-y: auto;
+    padding: 12px;
+    background: var(--aic-surface);
+    border: 1px solid var(--aic-line-2);
+    border-radius: 12px;
+    box-shadow: 0 12px 34px rgba(0,0,0,.24);
+    color: var(--aic-ink);
+    animation: aicPop .12s ease-out;
+}
+.o_aichat_set {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin-bottom: 11px;
+    &__label { color: var(--aic-ink-2); font-size: .78rem; }
+    &__hint  { color: var(--aic-ink-3); font-size: .69rem; margin: -6px 0 8px; }
+    &__sep   { height: 1px; background: var(--aic-line); margin: 4px 0 10px; }
+    &__action {
+        display: flex; align-items: center; gap: 9px; width: 100%;
+        border: 0; border-radius: 7px;
+        padding: 8px 8px;
+        background: transparent;
+        color: var(--aic-ink);
+        font-family: inherit; font-size: .8rem; text-align: left;
+        cursor: pointer;
+        transition: background-color .12s linear;
+
+        .fa { width: 14px; text-align: center; color: var(--aic-ink-2); }
+        &:hover         { background: var(--aic-bg-2); }
+        &:focus-visible { outline: 2px solid var(--aic-accent); outline-offset: -2px; }
+    }
+}
+.o_aichat_seg {
+    display: inline-flex; align-items: stretch;
+    border: 1px solid var(--aic-line-2); border-radius: 8px; overflow: hidden;
+    background: var(--aic-bg-2);
+
+    button {
+        border: 0; background: transparent;
+        color: var(--aic-ink-2);
+        padding: 5px 11px;
+        font-family: inherit; font-size: .74rem; line-height: 1.5;
+        cursor: pointer;
+        transition: background-color .12s linear, color .12s linear;
+
+        & + button      { border-left: 1px solid var(--aic-line-2); }
+        &:hover         { color: var(--aic-ink); background: var(--aic-line); }
+        &:focus-visible { outline: 2px solid var(--aic-accent); outline-offset: -2px; }
+        &.is-on         { background: var(--aic-accent); color: var(--aic-accent-ink); }
+    }
+    &--size button { width: 34px; padding: 5px 0; }
+}
+.o_aichat_switch {
+    position: relative;
+    width: 38px; height: 22px;
+    padding: 0; border: 0; border-radius: 11px;
+    background: var(--aic-line-2);
+    cursor: pointer;
+    transition: background-color .15s linear;
+
+    &__knob {
+        position: absolute; top: 2px; left: 2px;
+        width: 18px; height: 18px; border-radius: 50%;
+        background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3);
+        transition: transform .15s ease;
+    }
+    &.is-on { background: var(--aic-accent); }
+    &.is-on .o_aichat_switch__knob { transform: translateX(16px); }
+    &:focus-visible { outline: 2px solid var(--aic-accent); outline-offset: 2px; }
+}
+
+// ---- transcript --------------------------------------------------------------
+.o_aichat_log {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scroll-behavior: smooth;
+    background: var(--aic-log-bg);
+
+    &::-webkit-scrollbar { width: 9px; }
+    &::-webkit-scrollbar-thumb {
+        background: var(--aic-line-2);
+        border: 3px solid transparent; background-clip: padding-box; border-radius: 6px;
+    }
+}
+
+.o_aichat_avatar {
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, var(--aic-fill), var(--aic-fill-2));
+    color: var(--aic-fill-ink);
+    box-shadow: 0 2px 5px rgba(113,75,103,.3);
+    .fa { font-size: .78em; line-height: 1; }
+}
+.o_aichat_bubble { min-width: 0; }
+.o_aichat_row.is-error .o_aichat_prose { color: var(--aic-err); }
+
+// classic — chat bubbles with an avatar
+[data-aic-theme="classic"] {
+    .o_aichat_log  { padding: 18px; display: flex; flex-direction: column; gap: 15px; }
+    .o_aichat_row  { display: flex; gap: 8px; max-width: 100%; animation: aicRowIn .3s ease-out; }
+    .o_aichat_row.is-ai   { align-self: flex-start; max-width: 100%; }
+    .o_aichat_row.is-user { align-self: flex-end; flex-direction: row-reverse; max-width: 86%; }
+    .o_aichat_bubble      { flex: 0 1 auto; padding: 11px 15px; line-height: 1.5; }
+
+    .o_aichat_row.is-ai .o_aichat_bubble {
+        background: var(--aic-surface); color: var(--aic-ink);
+        border: 1px solid var(--aic-line);
+        border-radius: 16px 16px 16px 4px;
+        box-shadow: 0 4px 15px rgba(0,0,0,.05);
+    }
+    .o_aichat_row.is-user .o_aichat_bubble {
+        background: linear-gradient(135deg, var(--aic-fill), var(--aic-fill-2));
+        color: var(--aic-fill-ink);
+        border-radius: 16px 16px 4px 16px;
+        box-shadow: 0 4px 10px rgba(113,75,103,.2);
+        a { color: #ffe08a; }
+    }
+    .o_aichat_row.is-error .o_aichat_bubble {
+        background: var(--aic-err-bg);
+        border: 1px solid var(--aic-err);
+        border-radius: 14px;
+        padding: 11px 15px;
+    }
+}
+
+// studio — hairline ledger rows, no avatar
+[data-aic-theme="studio"] {
+    .o_aichat_avatar { display: none; }
+    .o_aichat_row {
+        display: block;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--aic-line);
+        animation: aicRowIn .14s ease-out;
+    }
+    .o_aichat_row.is-ai   { border-left: 2px solid var(--aic-accent); }
+    .o_aichat_row.is-user { background: var(--aic-accent-soft); }
+    .o_aichat_row.is-user .o_aichat_prose { text-align: right; color: var(--aic-ink); }
+    .o_aichat_row.is-error { border-left: 2px solid var(--aic-err); background: var(--aic-err-bg); }
+}
+
+// ---- prose (assistant output) ------------------------------------------------
+.o_aichat_prose {
+    line-height: 1.6; min-width: 0; overflow-wrap: anywhere;
+    font-size: .95em;
+
+    > :first-child { margin-top: 0; }
+    > :last-child  { margin-bottom: 0; }
+
+    p  { margin: 0 0 .55em; }
+    ul, ol { margin: .45em 0; padding-left: 1.15em; }
+    li { margin: .18em 0; }
+    h1, h2, h3, h4, h5, h6 {
+        margin: .7em 0 .3em;
+        font-size: 1em; font-weight: 650; font-style: normal; line-height: 1.35;
+    }
+    hr { border: 0; border-top: 1px solid var(--aic-line); margin: .8em 0; }
+    a  { color: var(--aic-accent); text-underline-offset: 2px;
+         &:focus-visible { outline: 2px solid var(--aic-accent); outline-offset: 2px; } }
+    img { max-width: 100%; height: auto; margin: .4em 0; border-radius: 6px; }
+    blockquote {
+        margin: .5em 0; padding-left: .7em;
+        border-left: 2px solid var(--aic-line-2);
+        color: var(--aic-ink-2);
+    }
+    code {
+        font-family: var(--aic-mono); font-size: .84em;
+        color: var(--aic-accent); background: var(--aic-accent-soft);
+        padding: .1em .32em; border-radius: 3px;
+    }
+}
+
+// ---- data blocks (tables / code), the copy-wrapped layer --------------------
+.o_aichat_block {
+    margin: .6em 0;
+    border: 1px solid var(--aic-line-2);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--aic-bg);
+
+    &__bar {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        padding: 5px 6px 5px 10px;
+        border-bottom: 1px solid var(--aic-line);
+        background: var(--aic-bg-2);
+        font-family: var(--aic-mono);
+        font-size: .64rem; letter-spacing: .09em; text-transform: uppercase;
+        color: var(--aic-ink-3);
+    }
+    &__copy {
+        display: inline-flex; align-items: center; gap: 5px;
+        border: 0; border-radius: 3px;
+        padding: 3px 6px;
+        background: transparent;
+        color: var(--aic-ink-2);
+        font-family: var(--aic-mono);
+        font-size: .64rem; letter-spacing: .06em; text-transform: uppercase;
+        cursor: pointer;
+        transition: background-color .12s linear, color .12s linear;
+
+        svg { width: 12px; height: 12px; }
+        &:hover         { background: var(--aic-line); color: var(--aic-ink); }
+        &:focus-visible { outline: 2px solid var(--aic-accent); outline-offset: 1px; }
+        &.is-done       { color: var(--aic-ok); }
+    }
+    &__scroll { overflow-x: auto; }
+
+    pre {
+        margin: 0; padding: 10px 12px;
+        background: transparent; border: 0;
+        color: var(--aic-ink);                 // explicit: Odoo's base `pre` colour must not leak in
+        font-family: var(--aic-mono); font-size: .76rem; line-height: 1.5;
+        white-space: pre;
+        code { background: none; border: 0; padding: 0; color: inherit; font-size: inherit; }
+    }
+    table {
+        width: 100%; margin: 0;
+        border-collapse: collapse;
+        font-size: .78rem;
+        font-variant-numeric: tabular-nums;      // ids/counts must align
+
+        th, td {
+            padding: 6px 10px; text-align: left; vertical-align: top;
+            border-bottom: 1px solid var(--aic-line);
+        }
+        // cells wrap so one long name can't push later columns off-panel
+        td { white-space: normal; overflow-wrap: anywhere; min-width: 6ch; }
+        th {
+            white-space: nowrap;
+            font-family: var(--aic-mono); font-weight: 500;
+            font-size: .64rem; letter-spacing: .08em; text-transform: uppercase;
+            color: var(--aic-ink-3);
+        }
+        tr:last-child td { border-bottom: 0; }
+    }
+}
+
+// ---- empty state -------------------------------------------------------------
+.o_aichat_start {
+    padding: 22px 18px;
+
+    &__lead { margin: 0 0 3px; font-weight: 650; color: var(--aic-ink); }
+    &__sub  { margin: 0 0 16px; font-size: .8rem; color: var(--aic-ink-2); }
+    &__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+    &__item {
+        display: flex; align-items: baseline; gap: 8px; width: 100%;
+        padding: 9px 11px;
+        border: 0; border-radius: 8px;
+        background: var(--aic-bg-2);
+        color: var(--aic-ink-2);
+        font-family: inherit; font-size: .8rem; text-align: left;
+        cursor: pointer;
+        transition: background-color .12s linear, color .12s linear;
+
+        &:hover         { background: var(--aic-line); color: var(--aic-ink); }
+        &:focus-visible { outline: 2px solid var(--aic-accent); outline-offset: -2px; }
+    }
+    &__caret { font-family: var(--aic-mono); color: var(--aic-accent); }
+}
+
+// ---- waiting -----------------------------------------------------------------
+.o_aichat_wait {
+    display: inline-flex; gap: 4px; align-items: center; height: 1.2em;
+    i {
+        width: 6px; height: 6px; border-radius: 50%;
+        background: var(--aic-accent); opacity: .35;
+        animation: aicBlink 1.2s linear infinite;
+        &:nth-child(2) { animation-delay: .16s; }
+        &:nth-child(3) { animation-delay: .32s; }
+    }
+}
+
+// ---- composer ----------------------------------------------------------------
+.o_aichat_ask {
+    flex: 0 0 auto;
+    display: flex; align-items: flex-end; gap: 10px;
+    padding: 12px 14px;
+    border-top: 1px solid var(--aic-line);
+    background: var(--aic-surface);
+}
+// Specificity is deliberate: Odoo repaints form controls by element+class, which combined with an
+// inherited near-white colour to make typed text invisible. Colour + background here must win.
+.o_aichat_ask .o_aichat_field {
+    flex: 1 1 auto;
+    min-height: 40px; max-height: 130px;
+    padding: 10px 14px;
+    resize: none;
+    border: 1px solid var(--aic-line-2);
+    background: var(--aic-field-bg);
+    color: var(--aic-ink);
+    font-family: var(--aic-sans);
+    font-size: .9rem; line-height: 1.45;
+    outline: none;
+    transition: border-color .12s linear, background-color .12s linear, box-shadow .12s linear;
+
+    &::placeholder  { color: var(--aic-ink-3); }
+    &:hover         { border-color: var(--aic-ink-3); }
+    &:focus         { background: var(--aic-bg); border-color: var(--aic-accent);
+                      box-shadow: 0 0 0 3px var(--aic-focus-ring); }
+    &[disabled]     { opacity: .6; cursor: not-allowed; }
+}
+[data-aic-theme="classic"] .o_aichat_ask .o_aichat_field { border-radius: 20px; }
+[data-aic-theme="studio"]  .o_aichat_ask .o_aichat_field { border-radius: 4px; }
+
+.o_aichat_send {
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px;
+    border: 0; border-radius: 50%;
+    background: linear-gradient(135deg, var(--aic-fill), var(--aic-fill-2));
+    color: var(--aic-fill-ink);
+    box-shadow: 0 4px 10px rgba(113,75,103,.3);
+    cursor: pointer;
+    transition: transform .15s ease, box-shadow .15s ease, filter .12s linear, opacity .12s linear;
+
+    .fa { font-size: .95rem; }
+    &__key  { font-family: var(--aic-mono); font-size: .9rem; line-height: 1; }
+    &__spin {
+        width: 14px; height: 14px; border-radius: 50%;
+        border: 2px solid currentColor; border-top-color: transparent;
+        animation: aicSpin .7s linear infinite;
+    }
+    &:hover:not(:disabled)  { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(113,75,103,.4); }
+    &:active:not(:disabled) { transform: none; filter: brightness(.95); }
+    &:focus-visible         { outline: 2px solid var(--aic-accent); outline-offset: 2px; }
+    &:disabled              { opacity: .5; cursor: not-allowed; box-shadow: none; transform: none; }
+}
+[data-aic-theme="studio"] .o_aichat_send {
+    width: 36px; height: 36px; border-radius: 4px;
+    background: var(--aic-accent); color: var(--aic-accent-ink);
+    border: 1px solid var(--aic-accent);
+    box-shadow: none;
+    &:hover:not(:disabled)  { transform: none; filter: brightness(1.08); box-shadow: none; }
+}
+
+// ---- motion ------------------------------------------------------------------
+@keyframes aicPanelIn { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes aicRowIn   { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes aicPop     { from { opacity: 0; transform: translateY(-6px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes aicBlink   { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@keyframes aicSpin    { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .o_aichat_panel, .o_aichat_row, .o_aichat_settings { animation: none; }
+    .o_aichat_wait i, .o_aichat_send__spin { animation: none; }
+    .o_aichat_trigger:hover .o_aichat_wand { animation: none; }
+}
