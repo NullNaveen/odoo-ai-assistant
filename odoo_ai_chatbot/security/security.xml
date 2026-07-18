@@ -17,6 +17,16 @@
             <field name="groups" eval="[(4, ref('base.group_user'))]"/>
         </record>
         
+        <!-- Rule for regular users: only their own pending actions. Without this, any user with
+             the model's CRUD access could read or tamper with another user's proposed actions
+             through a direct ORM call — the confirmation gate must be per-user end to end. -->
+        <record id="ai_pending_action_user_rule" model="ir.rule">
+            <field name="name">AI Pending Action: Own records</field>
+            <field name="model_id" ref="model_ai_pending_action"/>
+            <field name="domain_force">[('user_id', '=', user.id)]</field>
+            <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+        </record>
+
         <!-- Rule for admins: See all sessions -->
         <record id="ai_chat_session_admin_rule" model="ir.rule">
             <field name="name">AI Chat Session: All records</field>

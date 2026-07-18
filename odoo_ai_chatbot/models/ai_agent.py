@@ -269,6 +269,7 @@ class AIAgent(models.AbstractModel):
             'role': 'user',
             'content': message_content,
         })
+        session._maybe_autotitle(message_content)
 
         llm, tools, provider = self._get_llm_and_tools(session)
         # bind the FULL options dict. ChatOllama has no presence_penalty field, and this

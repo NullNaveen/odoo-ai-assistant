@@ -29,7 +29,7 @@
 
             <div t-if="state.isOpen"
                  class="o_aichat_panel"
-                 t-att-class="state.maximized ? 'is-max' : ''"
+                 t-attf-class="{{ state.maximized ? 'is-max' : '' }} {{ state.historyOpen ? 'is-history' : '' }}"
                  t-att-data-aic-theme="state.theme"
                  t-att-data-aic-dark="state.dark ? '1' : '0'"
                  t-att-data-aic-size="state.textSize"
@@ -43,12 +43,19 @@
                 <header class="o_aichat_head">
                     <div class="o_aichat_head__id">
                         <span class="o_aichat_head__mark">
-                            <i t-if="state.theme === 'classic'" class="fa fa-bolt o_aichat_bolt" aria-hidden="true"/>
+                            <i t-if="isBubbleTheme" class="fa fa-bolt o_aichat_bolt" aria-hidden="true"/>
                             <t t-else="" t-call="odoo_ai_chatbot.Mark"/>
                         </span>
                         <span class="o_aichat_head__label">AI Assistant</span>
                     </div>
                     <div class="o_aichat_head__tools">
+                        <button class="o_aichat_btn o_aichat_histbtn"
+                                t-att-class="state.historyOpen ? 'is-on' : ''"
+                                title="Conversations" aria-label="Conversations"
+                                t-att-aria-expanded="state.historyOpen ? 'true' : 'false'"
+                                t-on-click="toggleHistory">
+                            <i class="fa fa-history" aria-hidden="true"/>
+                        </button>
                         <button class="o_aichat_btn" title="New conversation" aria-label="New conversation" t-on-click="startNewChat">
                             <i class="fa fa-plus" aria-hidden="true"/>
                         </button>
@@ -73,11 +80,16 @@
 
                 <!-- Settings: per-window appearance + behaviour. Just the necessary controls. -->
                 <div t-if="state.settingsOpen" class="o_aichat_settings" role="menu" aria-label="Assistant settings">
-                    <div class="o_aichat_set">
+                    <div class="o_aichat_set o_aichat_set--stack">
                         <span class="o_aichat_set__label">Theme</span>
-                        <div class="o_aichat_seg" role="group" aria-label="Theme">
-                            <button t-att-class="state.theme === 'classic' ? 'is-on' : ''" t-on-click="() => this.setPref('theme', 'classic')">Classic</button>
-                            <button t-att-class="state.theme === 'studio' ? 'is-on' : ''" t-on-click="() => this.setPref('theme', 'studio')">Studio</button>
+                        <div class="o_aichat_themes" role="group" aria-label="Theme">
+                            <t t-foreach="['classic','ocean','sunset','studio','terminal']" t-as="th" t-key="th">
+                                <button t-attf-class="o_aichat_chip {{ state.theme === th ? 'is-on' : '' }}"
+                                        t-on-click="() => this.setPref('theme', th)">
+                                    <span t-attf-class="o_aichat_chip__dot is-{{ th }}"/>
+                                    <t t-esc="th.charAt(0).toUpperCase() + th.slice(1)"/>
+                                </button>
+                            </t>
                         </div>
                     </div>
                     <div class="o_aichat_set">
@@ -115,6 +127,50 @@
                     </button>
                 </div>
 
+                <!-- Conversations: full overlay over the transcript. Search, switch, rename, delete. -->
+                <div t-if="state.historyOpen" class="o_aichat_history" aria-label="Conversations">
+                    <div class="o_aichat_history__bar">
+                        <i class="fa fa-search" aria-hidden="true"/>
+                        <input class="o_aichat_history__search" type="text" placeholder="Search conversations…"
+                               t-model="state.historyQuery" aria-label="Search conversations"/>
+                    </div>
+                    <div t-if="state.historyLoading" class="o_aichat_history__empty">Loading…</div>
+                    <div t-elif="!filteredHistory.length" class="o_aichat_history__empty">
+                        <t t-if="state.historyQuery">No conversations match.</t>
+                        <t t-else="">No conversations yet.</t>
+                    </div>
+                    <ul t-else="" class="o_aichat_history__list">
+                        <li t-foreach="filteredHistory" t-as="s" t-key="s.id">
+                            <div t-attf-class="o_aichat_history__item {{ s.id === state.sessionId ? 'is-active' : '' }}"
+                                 t-on-click="() => this.selectSession(s.id)">
+                                <div class="o_aichat_history__main">
+                                    <input t-if="state.renamingId === s.id"
+                                           class="o_aichat_history__rename" type="text"
+                                           t-model="state.renameValue"
+                                           t-on-keydown="(ev) => this.onRenameKeydown(s, ev)"
+                                           t-on-blur="() => this.commitRename(s)"
+                                           t-on-click.stop=""
+                                           t-ref="renameInput"/>
+                                    <span t-else="" class="o_aichat_history__title" t-esc="s.title"/>
+                                    <span class="o_aichat_history__meta">
+                                        <t t-esc="relTime(s.last_activity)"/> · <t t-esc="s.message_count"/> msg
+                                    </span>
+                                </div>
+                                <div class="o_aichat_history__acts">
+                                    <button class="o_aichat_btn" title="Rename" aria-label="Rename"
+                                            t-on-click="(ev) => this.startRename(s, ev)">
+                                        <i class="fa fa-pencil" aria-hidden="true"/>
+                                    </button>
+                                    <button class="o_aichat_btn o_aichat_history__del" title="Delete" aria-label="Delete"
+                                            t-on-click="(ev) => this.deleteSession(s.id, ev)">
+                                        <i class="fa fa-trash-o" aria-hidden="true"/>
+                                    </button>
+                                </div>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+
                 <div class="o_aichat_log" t-ref="messagesContainer">
                     <!-- Empty: hands over real openers instead of a canned greeting. -->
                     <div t-if="!state.messages.length and !state.isLoading" class="o_aichat_start">
@@ -136,6 +192,11 @@
                             </div>
                             <div class="o_aichat_bubble">
                                 <div class="o_aichat_prose"><t t-out="msg.content"/></div>
+                                <button t-if="msg.role === 'assistant'" class="o_aichat_msgcopy"
+                                        title="Copy message" aria-label="Copy message"
+                                        t-on-click="copyMessage">
+                                    <i class="fa fa-clone" aria-hidden="true"/>
+                                </button>
                             </div>
                         </div>
                     </t>
@@ -165,7 +226,7 @@
                             aria-label="Send"
                             t-att-disabled="state.isLoading || !state.inputValue.trim()">
                         <span t-if="state.isLoading" class="o_aichat_send__spin" aria-hidden="true"/>
-                        <i t-elif="state.theme === 'classic'" class="fa fa-paper-plane" aria-hidden="true"/>
+                        <i t-elif="isBubbleTheme" class="fa fa-paper-plane" aria-hidden="true"/>
                         <span t-else="" class="o_aichat_send__key" aria-hidden="true">↵</span>
                     </button>
                 </div>

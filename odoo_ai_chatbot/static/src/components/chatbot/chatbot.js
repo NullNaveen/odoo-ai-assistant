@@ -13,7 +13,9 @@ const DONE_ICON = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5
 
 // Persisted preferences. Bumping the key is a clean migration if the shape ever changes.
 const PREFS_KEY = "aichat_prefs_v1";
-const THEMES = ["classic", "studio"];
+// classic/ocean/sunset share the bubble layout; studio/terminal share the ledger layout.
+const THEMES = ["classic", "ocean", "sunset", "studio", "terminal"];
+const BUBBLE_THEMES = ["classic", "ocean", "sunset"];
 const SIZES = ["s", "m", "l"];
 const DEFAULTS = {
     theme: "classic",     // the repo-original widget look is the default
@@ -43,6 +45,12 @@ export class AIChatbot extends Component {
             sessionId: null,
             isOpen: false,
             settingsOpen: false,
+            historyOpen: false,
+            history: [],
+            historyQuery: "",
+            historyLoading: false,
+            renamingId: null,
+            renameValue: "",
             error: null,
             // appearance / layout, all persisted
             theme: prefs.theme,
@@ -141,6 +149,7 @@ export class AIChatbot extends Component {
 
     toggleSettings() {
         this.state.settingsOpen = !this.state.settingsOpen;
+        if (this.state.settingsOpen) this.state.historyOpen = false;
     }
 
     _onDocPointerDown(ev) {
@@ -148,6 +157,113 @@ export class AIChatbot extends Component {
         const t = ev.target;
         if (t?.closest && (t.closest(".o_aichat_settings") || t.closest(".o_aichat_gear"))) return;
         this.state.settingsOpen = false;
+    }
+
+    get isBubbleTheme() {
+        return BUBBLE_THEMES.includes(this.state.theme);
+    }
+
+    // ---- conversation history -------------------------------------------------
+    async toggleHistory() {
+        this.state.historyOpen = !this.state.historyOpen;
+        if (!this.state.historyOpen) return;
+        this.state.settingsOpen = false;
+        this.state.historyQuery = "";
+        this.state.renamingId = null;
+        this.state.historyLoading = true;
+        try {
+            this.state.history = await this.orm.call("ai.chat.session", "get_sessions", []);
+        } catch (e) {
+            console.warn("AI Assistant: failed to load history", e);
+            this.state.history = [];
+        } finally {
+            this.state.historyLoading = false;
+        }
+    }
+
+    get filteredHistory() {
+        const q = this.state.historyQuery.trim().toLowerCase();
+        if (!q) return this.state.history;
+        return this.state.history.filter((s) => (s.title || "").toLowerCase().includes(q));
+    }
+
+    async selectSession(id) {
+        if (this.state.renamingId === id) return;      // a rename in progress owns the row
+        try {
+            const data = await this.orm.call("ai.chat.session", "get_session_messages", [id]);
+            if (!data?.session_id) return;
+            this.state.sessionId = data.session_id;
+            this.state.messages = (data.messages || []).map((m) => this._toMessage(m.role, m.content, true));
+            this.state.error = null;
+            this.state.historyOpen = false;
+        } catch (e) {
+            console.warn("AI Assistant: failed to open conversation", e);
+        }
+    }
+
+    async deleteSession(id, ev) {
+        ev?.stopPropagation();
+        try {
+            await this.orm.call("ai.chat.session", "delete_session", [id]);
+            this.state.history = this.state.history.filter((s) => s.id !== id);
+            if (this.state.sessionId === id) {
+                // the open conversation is gone — fall back to the most recent one, or start fresh
+                const next = this.state.history[0];
+                if (next) await this.selectSession(next.id);
+                else await this.startNewChat();
+            }
+        } catch (e) {
+            console.warn("AI Assistant: failed to delete conversation", e);
+        }
+    }
+
+    startRename(s, ev) {
+        ev?.stopPropagation();
+        this.state.renamingId = s.id;
+        this.state.renameValue = s.title || "";
+    }
+
+    async commitRename(s) {
+        const name = this.state.renameValue.trim();
+        this.state.renamingId = null;
+        if (!name || name === s.title) return;
+        try {
+            await this.orm.call("ai.chat.session", "rename_session", [s.id, name]);
+            s.title = name;
+        } catch (e) {
+            console.warn("AI Assistant: failed to rename conversation", e);
+        }
+    }
+
+    onRenameKeydown(s, ev) {
+        if (ev.key === "Enter") { ev.preventDefault(); this.commitRename(s); }
+        if (ev.key === "Escape") this.state.renamingId = null;
+    }
+
+    /** "2m ago"-style stamp for the history list; server datetimes are naive UTC. */
+    relTime(dt) {
+        if (!dt) return "";
+        const then = new Date(dt.replace(" ", "T") + "Z").getTime();
+        const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
+        if (mins < 1) return "now";
+        if (mins < 60) return `${mins}m`;
+        if (mins < 1440) return `${Math.round(mins / 60)}h`;
+        if (mins < 43200) return `${Math.round(mins / 1440)}d`;
+        return new Date(then).toLocaleDateString();
+    }
+
+    // ---- per-message copy -----------------------------------------------------
+    async copyMessage(ev) {
+        const btn = ev.currentTarget;
+        const prose = btn.closest(".o_aichat_row")?.querySelector(".o_aichat_prose");
+        if (!prose) return;
+        try {
+            await navigator.clipboard.writeText(prose.innerText.trim());
+            btn.classList.add("is-done");
+            setTimeout(() => btn.classList.remove("is-done"), 1400);
+        } catch (e) {
+            console.warn("AI Assistant: copy failed", e);
+        }
     }
 
     // ---- layout / resize -----------------------------------------------------
@@ -330,6 +446,7 @@ export class AIChatbot extends Component {
     closeChat() {
         this.state.isOpen = false;
         this.state.settingsOpen = false;
+        this.state.historyOpen = false;
     }
 
     toggleMaximize() {
@@ -346,6 +463,7 @@ export class AIChatbot extends Component {
             this.state.messages = [];
             this.state.error = null;
             this.state.settingsOpen = false;
+            this.state.historyOpen = false;
         } catch (e) {
             console.error("AI Assistant: failed to create session", e);
         }

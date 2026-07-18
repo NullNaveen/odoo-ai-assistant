@@ -28,9 +28,11 @@ actions. Always as the logged-in user, always within Odoo's access rights.
   to draft. Only a curated set of safe buttons (see [Security](#security)).
 - **Asks before acting** — every change is proposed first with the exact record count, and only runs
   after you explicitly confirm.
+- **Conversation history** — every chat is kept: search, switch, rename and delete past
+  conversations, with titles taken from your first question.
 - **Reads beautifully** — Markdown tables and code blocks with one-click copy, sanitised HTML.
-- **Feels native** — two themes, per-window light/dark, three text sizes, resizable panel.
-  Preferences persist per browser.
+- **Feels native** — five themes (Classic, Ocean, Sunset, Studio, and a mono Terminal), per-window
+  light/dark, three text sizes, resizable panel. Preferences persist per browser.
 
 <div align="center">
 
