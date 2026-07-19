@@ -22,7 +22,12 @@ actions. Always as the logged-in user, always within Odoo's access rights.
 
 - **Answers from your data** — "How many contacts do we have?", "Show the 5 most recent sale orders."
 - **Knows what's on your screen** — ask "what am I looking at?" or say "confirm this order" and it
-  resolves to the record you have open (privacy toggle in settings).
+  resolves to the record you have open — including the **active list filters**, so "total these"
+  means the filtered records (privacy toggle in settings).
+- **Exports on request** — "give me these as CSV" produces a downloadable file, respecting your
+  access rights.
+- **Schedules follow-ups** — "remind me to call them Friday" creates a real Odoo activity on the
+  record, assigned to you.
 - **Totals & reporting** — sums, averages and counts computed in the database with one query
   (revenue, COGS, margins — grouped by account, month, anything), never by paging thousands of rows.
 - **Creates & edits** — draft a sales order, update a field, translate a record.
@@ -52,6 +57,8 @@ actions. Always as the logged-in user, always within Odoo's access rights.
 | `read_odoo_records` | Search & read (paged) |
 | `count_odoo_records` | Exact counts |
 | `aggregate_odoo_records` | SUM / AVG / MIN / MAX / COUNT, with group-by |
+| `export_odoo_records` | CSV export with a download link |
+| `schedule_activity` | Follow-up reminder (activity) on a record |
 | `create_odoo_record` | Create a record |
 | `update_odoo_records` | Update *(confirmation required)* |
 | `update_odoo_record_translations` | Field translations *(confirmation required)* |

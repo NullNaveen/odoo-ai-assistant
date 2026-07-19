@@ -497,6 +497,14 @@ export class AIChatbot extends Component {
             }
             if (model) ctx.model = model;
             if (Number.isFinite(resId)) ctx.res_id = resId;
+            // list/kanban views: the active search facets, as the user sees them — so
+            // "these records" can mean the filtered set, not the whole table
+            const facets = [...document.querySelectorAll(".o_searchview_facet")]
+                .map((f) => f.innerText.trim().replace(/\s*\n\s*/g, ": "))
+                .filter(Boolean).slice(0, 8);
+            if (facets.length) ctx.filters = facets;
+            const bc = document.querySelector(".o_breadcrumb .active, .o_last_breadcrumb_item");
+            if (bc && bc.innerText.trim()) ctx.view = bc.innerText.trim().slice(0, 120);
             return ctx;
         } catch (e) {
             return null;

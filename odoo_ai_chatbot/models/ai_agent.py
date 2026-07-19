@@ -1,3 +1,6 @@
+import base64
+import csv
+import io
 import json
 import logging
 import re
@@ -49,6 +52,8 @@ MAX_READ_LIMIT = 200
 # read_odoo_records — but a groupby on a high-cardinality field could still return thousands of
 # rows. Cap the groups returned (a grand total or a per-account P&L is a handful of rows).
 MAX_GROUP_ROWS = 500
+# export_odoo_records writes a CSV attachment; cap the rows so one request can't dump the DB
+MAX_EXPORT_ROWS = 5000
 BINARY_FIELD_TYPES = {'binary'}
 PENDING_ACTION_TTL_MINUTES = 10
 
@@ -117,7 +122,7 @@ ALLOWED_HTML_ATTRS = {
 # Images: same-origin Odoo paths or data: URIs only — never an arbitrary remote host, which
 # would let a poisoned record silently beacon out to a third party when a reply is rendered.
 SAFE_IMG_SRC_RE = re.compile(r"^(/(web|odoo)/[\w./?=&%-]+|data:image/(png|jpe?g|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=]+)$")
-SAFE_HREF_RE = re.compile(r"^(/odoo/[\w.]+/\d+|/web#model=[\w.]+&id=\d+&view_type=form)$")
+SAFE_HREF_RE = re.compile(r"^(/odoo/[\w.]+/\d+|/web#model=[\w.]+&id=\d+&view_type=form|/web/content/\d+\?download=true)$")
 
 
 class AIAgent(models.AbstractModel):
@@ -146,11 +151,16 @@ class AIAgent(models.AbstractModel):
         "4. When you do have a real, tool-fetched model name and ID, build the link as: <a href=\"/odoo/[model_name]/[id]\" target=\"_blank\">[Record Name]</a> for Odoo 17+, or /web#model=[model_name]&id=[id]&view_type=form for Odoo 16 and earlier. Determine the actual installed version from context — never assume it.\n"
         "5. If you are giving a general explanation or demo walkthrough, do NOT use any <a> links at all in that section.\n"
         "6. You can execute Odoo operations using your tools based on user instructions, but only ever act on data returned by your tools, never on assumed or remembered values.\n"
-        "7. You have access to exactly eleven tools: get_model_schema, read_odoo_records, count_odoo_records, "
-        "aggregate_odoo_records, create_odoo_record, update_odoo_records, update_odoo_record_translations, "
-        "delete_odoo_records, run_odoo_action, confirm_pending_action, and cancel_pending_action. NEVER call a "
+        "7. You have access to exactly thirteen tools: get_model_schema, read_odoo_records, count_odoo_records, "
+        "aggregate_odoo_records, export_odoo_records, schedule_activity, create_odoo_record, update_odoo_records, "
+        "update_odoo_record_translations, delete_odoo_records, run_odoo_action, confirm_pending_action, and "
+        "cancel_pending_action. NEVER call a "
         "tool with any other name. You DO have access to record aggregation — never tell the user you cannot "
         "sum, total, or compute figures; use aggregate_odoo_records.\n"
+        "7e. EXPORT RULE: for any 'export / download / CSV / Excel / spreadsheet' request, call export_odoo_records "
+        "and give the user the returned download link as an <a> tag. REMINDER RULE: for any 'remind me / follow up / "
+        "schedule a call / to-do' request, call schedule_activity on the relevant record (the on-screen one if the "
+        "user says 'this').\n"
         "7d. ACTIONS / BUTTONS RULE: to perform a workflow action a user clicks — confirm a sales order, post "
         "an invoice, validate a delivery, set a record to draft, cancel it — use run_odoo_action(model_name, "
         "domain, method_name) with one of the allowed actions (action_confirm, action_post, action_cancel, "
@@ -374,22 +384,37 @@ class AIAgent(models.AbstractModel):
             # so it is sanitised to known scalar keys and length-capped.
             if isinstance(ui_context, dict):
                 safe = {}
-                for key, cap in (("url", 300), ("title", 200), ("model", 120)):
+                for key, cap in (("url", 300), ("title", 200), ("model", 120), ("view", 120)):
                     val = ui_context.get(key)
                     if isinstance(val, str) and val.strip():
                         safe[key] = val.strip()[:cap]
                 rid = ui_context.get("res_id")
                 if isinstance(rid, int) and rid > 0:
                     safe["res_id"] = rid
-                if safe:
+                filters = ui_context.get("filters")
+                if isinstance(filters, list):
+                    filters = [str(f).strip()[:80] for f in filters[:8] if str(f).strip()]
+                else:
+                    filters = []
+                if safe or filters:
                     parts = [f"{k}={v}" for k, v in safe.items()]
-                    history.append(SystemMessage(content=(
-                        "UI CONTEXT — the user is currently looking at this in Odoo: "
-                        + ", ".join(parts) + ". "
+                    note = ("UI CONTEXT — the user is currently looking at this in Odoo: "
+                            + ", ".join(parts) + ". ")
+                    if filters:
+                        note += (
+                            "ACTIVE FILTERS on the list they are viewing: "
+                            + "; ".join(filters) + ". "
+                            "If they say 'these records', 'this list' or 'the filtered ones', they "
+                            "mean records matching these filters — translate the filters into a "
+                            "domain for your read/count/aggregate/export tools (use get_model_schema "
+                            "to find the right field names). "
+                        )
+                    note += (
                         "If they say 'this record', 'this order', 'here' or similar, they mean "
                         "what is on this screen. When model and res_id are given, use your read "
                         "tools on exactly that record instead of guessing or asking which one."
-                    )))
+                    )
+                    history.append(SystemMessage(content=note))
 
             final_text = None
             # Note:  was range(5). Real ERP tasks legitimately need more tool steps than
@@ -676,6 +701,124 @@ class AIAgent(models.AbstractModel):
                 # Surface the real error (e.g. an unknown field or bad aggregate spec) so the model
                 # can correct itself rather than give up and claim it 'cannot aggregate'.
                 return f"Error aggregating records: {str(exc) or type(exc).__name__}"
+
+        @tool
+        def export_odoo_records(model_name: str, domain: list = None, fields_: list = None, limit: int = None):
+            """
+            Export matching records to a CSV FILE the user can download — for ANY "export",
+            "download", "CSV", "Excel", "spreadsheet" request. Returns a download link you MUST
+            give to the user as an <a href="..."> link. Not for displaying data in chat — use
+            read_odoo_records for that.
+            domain: filter tuples (e.g. from the user's active list filters). Omit for all records.
+            fields_: field names to include as columns. Omit for all non-binary fields.
+            limit: row cap (server caps at 5000 regardless).
+            """
+            try:
+                Model = env.get(model_name)
+                if Model is None:
+                    return f"Model {model_name} not found."
+                err = _check_write_access(Model, model_name, 'read')
+                if err:
+                    return err
+                domain = domain or []
+                limit = MAX_EXPORT_ROWS if not limit else min(limit, MAX_EXPORT_ROWS)
+                cols = fields_ or [
+                    fname for fname, f in Model._fields.items()
+                    if f.type not in BINARY_FIELD_TYPES and f.store
+                ]
+                unknown = [c for c in cols if c not in Model._fields]
+                if unknown:
+                    return f"Unknown field(s) for {model_name}: {', '.join(unknown)}."
+                rows = Model.search_read(domain, fields=cols, limit=limit)
+                buf = io.StringIO()
+                writer = csv.writer(buf)
+                writer.writerow(cols)
+                for r in rows:
+                    out = []
+                    for c in cols:
+                        v = r.get(c)
+                        if isinstance(v, (list, tuple)) and len(v) == 2 and isinstance(v[0], int):
+                            v = v[1]                      # many2one -> display name
+                        elif isinstance(v, (list, tuple)):
+                            v = "; ".join(str(x) for x in v)
+                        elif v is False and Model._fields[c].type != 'boolean':
+                            v = ""
+                        out.append(v)
+                    writer.writerow(out)
+                att = env['ir.attachment'].create({
+                    'name': f"{model_name.replace('.', '_')}_export.csv",
+                    'datas': base64.b64encode(buf.getvalue().encode('utf-8-sig')),
+                    'mimetype': 'text/csv',
+                })
+                total = Model.search_count(domain)
+                return json.dumps({
+                    'download_url': f"/web/content/{att.id}?download=true",
+                    'rows_exported': len(rows),
+                    'total_matching': total,
+                    'note': (
+                        "Tell the user the export is ready and give them EXACTLY this link: "
+                        f'<a href="/web/content/{att.id}?download=true">Download CSV</a>. '
+                        + ("" if total <= len(rows) else
+                           f"Only the first {len(rows)} of {total} matching rows were exported — say so.")
+                    ),
+                })
+            except Exception as exc:
+                _logger.exception("export_odoo_records failed for model %s", model_name)
+                return f"Error exporting records: {str(exc) or type(exc).__name__}"
+
+        @tool
+        def schedule_activity(model_name: str, res_id: int, summary: str, due_date: str = None, note: str = None):
+            """
+            Schedule a follow-up activity (a reminder / to-do) for the CURRENT USER on a specific
+            record — for ANY "remind me", "follow up", "schedule a call", "add a to-do" request.
+            It appears in the record's chatter and the user's activity list. Executes immediately.
+            model_name/res_id: the record to attach the reminder to (e.g. the one on screen).
+            summary: short title, e.g. "Call about renewal".
+            due_date: YYYY-MM-DD; omit for tomorrow.
+            note: optional longer detail.
+            """
+            try:
+                blocked = _check_model_allowed(model_name, "schedule an activity on")
+                if blocked:
+                    return blocked
+                Model = env.get(model_name)
+                if Model is None:
+                    return f"Model {model_name} not found."
+                err = _check_write_access(Model, model_name, 'read')
+                if err:
+                    return err
+                record = Model.browse(res_id).exists()
+                if not record:
+                    return f"Record {model_name} id {res_id} not found."
+                if 'mail.activity' not in env:
+                    return "Activities are not available on this database (mail module not installed)."
+                # a model without chatter still works: mail.activity itself only needs model+res_id
+                act_type = env.ref('mail.mail_activity_data_todo', raise_if_not_found=False) \
+                    or env['mail.activity.type'].search([], limit=1)
+                deadline = fields.Date.today() + timedelta(days=1)
+                if due_date:
+                    try:
+                        deadline = fields.Date.from_string(due_date)
+                    except Exception:
+                        return f"Invalid due_date '{due_date}' — use YYYY-MM-DD."
+                activity = env['mail.activity'].create({
+                    'res_model_id': env['ir.model']._get(model_name).id,
+                    'res_id': record.id,
+                    'activity_type_id': act_type.id if act_type else False,
+                    'summary': summary or 'Follow up',
+                    'note': note or False,
+                    'date_deadline': deadline,
+                    'user_id': env.uid,
+                })
+                return json.dumps({
+                    'activity_id': activity.id,
+                    'on_record': record.display_name,
+                    'due': str(deadline),
+                    'note': f"Reminder scheduled on '{record.display_name}' for {deadline}.",
+                })
+            except Exception as exc:
+                _logger.exception("schedule_activity failed for %s/%s", model_name, res_id)
+                return f"Error scheduling the activity: {str(exc) or type(exc).__name__}"
 
         @tool
         def create_odoo_record(model_name: str, values: dict):
@@ -1016,8 +1159,9 @@ class AIAgent(models.AbstractModel):
 
         tools = [
             get_model_schema, read_odoo_records, count_odoo_records, aggregate_odoo_records,
-            create_odoo_record, update_odoo_records, update_odoo_record_translations,
-            delete_odoo_records, run_odoo_action, confirm_pending_action, cancel_pending_action,
+            export_odoo_records, schedule_activity, create_odoo_record, update_odoo_records,
+            update_odoo_record_translations, delete_odoo_records, run_odoo_action,
+            confirm_pending_action, cancel_pending_action,
         ]
 
         # Configure LLM
