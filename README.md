@@ -28,6 +28,11 @@ actions. Always as the logged-in user, always within Odoo's access rights.
   access rights.
 - **Schedules follow-ups** — "remind me to call them Friday" creates a real Odoo activity on the
   record, assigned to you.
+- **Finds what you mean** — partial or misspelled names resolve to the right record instead of a
+  false "not found".
+- **Hands you documents** — "PDF of this invoice" returns the real document as a download.
+- **Knows a record's story** — "what happened on this order?" reads the chatter: notes, who changed
+  what, and open activities.
 - **Totals & reporting** — sums, averages and counts computed in the database with one query
   (revenue, COGS, margins — grouped by account, month, anything), never by paging thousands of rows.
 - **Creates & edits** — draft a sales order, update a field, translate a record.
@@ -57,6 +62,9 @@ actions. Always as the logged-in user, always within Odoo's access rights.
 | `read_odoo_records` | Search & read (paged) |
 | `count_odoo_records` | Exact counts |
 | `aggregate_odoo_records` | SUM / AVG / MIN / MAX / COUNT, with group-by |
+| `resolve_record` | Find records from partial or misspelled names |
+| `read_chatter` | A record's history: notes, field changes, activities |
+| `render_report` | The record's standard PDF (invoice, quote…) as a download |
 | `export_odoo_records` | CSV export with a download link |
 | `schedule_activity` | Follow-up reminder (activity) on a record |
 | `create_odoo_record` | Create a record |
