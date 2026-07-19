@@ -123,7 +123,7 @@ ALLOWED_HTML_ATTRS = {
 # Images: same-origin Odoo paths or data: URIs only — never an arbitrary remote host, which
 # would let a poisoned record silently beacon out to a third party when a reply is rendered.
 SAFE_IMG_SRC_RE = re.compile(r"^(/(web|odoo)/[\w./?=&%-]+|data:image/(png|jpe?g|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=]+)$")
-SAFE_HREF_RE = re.compile(r"^(/odoo/[\w.]+/\d+|/web#model=[\w.]+&id=\d+&view_type=form|/web/content/\d+\?download=true)$")
+SAFE_HREF_RE = re.compile(r"^(/odoo/[\w.]+/\d+|/web#model=[\w.]+&id=\d+&view_type=form|/web/content/\d+(\?[\w=&.%-]*)?)$")
 
 
 class AIAgent(models.AbstractModel):
