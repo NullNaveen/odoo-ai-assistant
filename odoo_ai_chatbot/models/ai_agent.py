@@ -334,6 +334,14 @@ class AIAgent(models.AbstractModel):
                         _logger.exception("Error during conversation summarization for session %s", session.id)
 
             history = [SystemMessage(content=system_prompt)]
+            # The model has no clock. Without this, "remind me next Monday" or "this year" gets a
+            # hallucinated date (observed: a deadline set two years in the past).
+            today = fields.Date.context_today(self)
+            history.append(SystemMessage(content=(
+                f"Today's date is {today.isoformat()} ({today.strftime('%A')}). Resolve every "
+                f"relative date the user gives (tomorrow, next Monday, this month, this year) "
+                f"from this date."
+            )))
             if session.summary:
                 history.append(SystemMessage(content=f"Summary of previous conversation:\n{session.summary}"))
 
