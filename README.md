@@ -38,8 +38,11 @@ actions. Always as the logged-in user, always within Odoo's access rights.
 - **Creates & edits** — draft a sales order, update a field, translate a record.
 - **Runs workflow actions** — confirm an order, post an invoice, validate a delivery, cancel, reset
   to draft. Only a curated set of safe buttons (see [Security](#security)).
-- **Asks before acting** — every change is proposed first with the exact record count, and only runs
-  after you explicitly confirm.
+- **Asks before acting** — every change is proposed with the exact record count *and a before/after
+  preview*, only runs after you explicitly confirm, and executes exactly the records you approved
+  (capped, drift-proof).
+- **Answers stock questions** — "can we ship 50 now?", "when does more arrive?" — on hand, reserved,
+  free to ship, incoming receipts with dates.
 - **Conversation history** — every chat is kept: search, switch, rename and delete past
   conversations, with titles taken from your first question.
 - **Reads beautifully** — Markdown tables and code blocks with one-click copy, sanitised HTML.
@@ -65,6 +68,9 @@ actions. Always as the logged-in user, always within Odoo's access rights.
 | `resolve_record` | Find records from partial or misspelled names |
 | `read_chatter` | A record's history: notes, field changes, activities |
 | `render_report` | The record's standard PDF (invoice, quote…) as a download |
+| `check_stock` | Availability: on hand, free to ship, incoming with dates |
+| `my_activities` | Your open and overdue to-dos |
+| `list_attachments` | Files on a record, with download links |
 | `export_odoo_records` | CSV export with a download link |
 | `schedule_activity` | Follow-up reminder (activity) on a record |
 | `create_odoo_record` | Create a record |

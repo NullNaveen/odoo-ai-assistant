@@ -88,6 +88,9 @@ METHOD_HARD_DENY = {
 # A single confirmed action fans out to at most this many records — a human clicking a button
 # acts on one screen, so a broad "post every draft invoice" must be narrowed, not mass-fired.
 MAX_METHOD_RECORDS = 200
+# updates/translations and deletes are likewise capped per proposal
+MAX_UPDATE_RECORDS = 500
+MAX_DELETE_RECORDS = 200
 
 # Note:  sampling options sent VERBATIM to Ollama (see process_message for why this is
 # bound rather than set as ChatOllama fields). Tuned for a TOOL-CALLING agent, not chat:
@@ -152,12 +155,16 @@ class AIAgent(models.AbstractModel):
         "4. When you do have a real, tool-fetched model name and ID, build the link as: <a href=\"/odoo/[model_name]/[id]\" target=\"_blank\">[Record Name]</a> for Odoo 17+, or /web#model=[model_name]&id=[id]&view_type=form for Odoo 16 and earlier. Determine the actual installed version from context — never assume it.\n"
         "5. If you are giving a general explanation or demo walkthrough, do NOT use any <a> links at all in that section.\n"
         "6. You can execute Odoo operations using your tools based on user instructions, but only ever act on data returned by your tools, never on assumed or remembered values.\n"
-        "7. You have access to exactly sixteen tools: get_model_schema, resolve_record, read_odoo_records, "
-        "count_odoo_records, aggregate_odoo_records, read_chatter, export_odoo_records, render_report, "
-        "schedule_activity, create_odoo_record, update_odoo_records, update_odoo_record_translations, "
-        "delete_odoo_records, run_odoo_action, confirm_pending_action, and cancel_pending_action. NEVER call a "
+        "7. You have access to exactly nineteen tools: get_model_schema, resolve_record, read_odoo_records, "
+        "count_odoo_records, aggregate_odoo_records, read_chatter, check_stock, my_activities, list_attachments, "
+        "export_odoo_records, render_report, schedule_activity, create_odoo_record, update_odoo_records, "
+        "update_odoo_record_translations, delete_odoo_records, run_odoo_action, confirm_pending_action, and "
+        "cancel_pending_action. NEVER call a "
         "tool with any other name. You DO have access to record aggregation — never tell the user you cannot "
         "sum, total, or compute figures; use aggregate_odoo_records.\n"
+        "7g. STOCK RULE: for 'in stock / availability / can we ship / when does it arrive' questions call check_stock. "
+        "MY-DAY RULE: for 'my tasks / my activities / anything overdue' call my_activities. FILES RULE: for "
+        "'files / attachments / the contract on this record' call list_attachments and give the download links.\n"
         "7f. LOOKUP RULE: when the user names a record (a customer, product, order…) and you do not have its id "
         "from this conversation, call resolve_record FIRST — user-typed names are often partial or misspelled. "
         "Never claim a record does not exist until resolve_record found nothing. DOCUMENT RULE: for any "
@@ -865,6 +872,129 @@ class AIAgent(models.AbstractModel):
                 return "Error reading the record's history."
 
         @tool
+        def check_stock(product_id: int = None, product_name: str = None):
+            """
+            Stock availability for a product: on hand, reserved, free to ship NOW, per-location
+            breakdown, incoming receipts (with expected dates) and outgoing demand. Use for
+            "do we have X in stock", "can I promise N units", "when does more arrive",
+            "why can't this delivery be reserved". Give product_id if known, else product_name.
+            """
+            try:
+                if 'stock.quant' not in env:
+                    return "The Inventory app is not installed on this database."
+                Product = env['product.product']
+                product = None
+                if product_id:
+                    product = Product.browse(product_id).exists()
+                elif product_name:
+                    matches = Product.name_search(product_name, limit=5)
+                    if not matches:
+                        return f"No product matches '{product_name}'."
+                    if len(matches) > 1:
+                        return json.dumps({'ambiguous': [{'id': i, 'name': n} for i, n in matches],
+                                           'note': 'Several products match — ask the user which one, then call again with product_id.'})
+                    product = Product.browse(matches[0][0])
+                if not product:
+                    return "Provide product_id or product_name."
+                err = _check_write_access(Product, 'product.product', 'read')
+                if err:
+                    return err
+                quants = env['stock.quant'].search([
+                    ('product_id', '=', product.id), ('location_id.usage', '=', 'internal')])
+                locs = []
+                for q in quants:
+                    locs.append({'location': q.location_id.complete_name,
+                                 'on_hand': q.quantity, 'reserved': q.reserved_quantity,
+                                 'available': q.quantity - q.reserved_quantity})
+                Move = env['stock.move']
+                def _moves(domain):
+                    out = []
+                    for m in Move.search(domain, order='date asc', limit=5):
+                        out.append({'reference': m.reference or m.picking_id.name or '',
+                                    'qty': m.product_uom_qty, 'expected': str(m.date)[:10],
+                                    'state': m.state})
+                    return out
+                incoming = _moves([('product_id', '=', product.id), ('state', 'not in', ('done', 'cancel')),
+                                   ('location_id.usage', '!=', 'internal'), ('location_dest_id.usage', '=', 'internal')])
+                outgoing = _moves([('product_id', '=', product.id), ('state', 'not in', ('done', 'cancel')),
+                                   ('location_id.usage', '=', 'internal'), ('location_dest_id.usage', '!=', 'internal')])
+                return json.dumps({
+                    'product': product.display_name,
+                    'on_hand': product.qty_available,
+                    'free_to_ship_now': getattr(product, 'free_qty', product.qty_available),
+                    'forecasted_after_moves': product.virtual_available,
+                    'unit': product.uom_id.name,
+                    'by_location': locs,
+                    'incoming': incoming,
+                    'pending_outgoing': outgoing,
+                    'note': ("free_to_ship_now is what can be promised immediately; forecasted_after_moves "
+                             "includes scheduled receipts/deliveries — quote arrival dates from 'incoming'."),
+                }, default=str)
+            except Exception as exc:
+                _logger.exception("check_stock failed for %s/%s", product_id, product_name)
+                return f"Error checking stock: {str(exc) or type(exc).__name__}"
+
+        @tool
+        def my_activities(scope: str = "today"):
+            """
+            The CURRENT USER's own open activities / reminders / to-dos. Use for "what's on my
+            plate", "my tasks today", "anything overdue", "what's coming up".
+            scope: 'today' (due today or overdue), 'overdue', or 'all' (everything open).
+            """
+            try:
+                if 'mail.activity' not in env:
+                    return "Activities are not available on this database."
+                today = fields.Date.context_today(self)
+                domain = [('user_id', '=', env.uid)]
+                if scope == 'overdue':
+                    domain.append(('date_deadline', '<', today))
+                elif scope != 'all':
+                    domain.append(('date_deadline', '<=', today))
+                acts = env['mail.activity'].search(domain, order='date_deadline asc', limit=30)
+                rows = []
+                for a in acts:
+                    rows.append({'summary': a.summary or (a.activity_type_id.name or 'Activity'),
+                                 'due': str(a.date_deadline),
+                                 'overdue': a.date_deadline < today,
+                                 'on': f"{a.res_model}/{a.res_id}",
+                                 'record': a.res_name or ''})
+                return json.dumps({'scope': scope, 'count': len(rows), 'activities': rows,
+                                   'note': 'Link records as /odoo/<model>/<id> where useful.'}, default=str)
+            except Exception:
+                _logger.exception("my_activities failed")
+                return "Error reading your activities."
+
+        @tool
+        def list_attachments(model_name: str, res_id: int):
+            """
+            Files attached to a record (contracts, signed PDFs, images…), each with a download
+            link. Use for "what files are on this record", "get me the attached contract".
+            Give the user the links as <a href="..."> — never try to read file contents.
+            """
+            try:
+                Model = env.get(model_name)
+                if Model is None:
+                    return f"Model {model_name} not found."
+                err = _check_write_access(Model, model_name, 'read')
+                if err:
+                    return err
+                record = Model.browse(res_id).exists()
+                if not record:
+                    return f"Record {model_name} id {res_id} not found."
+                atts = env['ir.attachment'].search(
+                    [('res_model', '=', model_name), ('res_id', '=', res_id)],
+                    order='create_date desc', limit=20)
+                rows = [{'name': a.name, 'type': a.mimetype or '',
+                         'size_kb': round((a.file_size or 0) / 1024, 1),
+                         'download': f"/web/content/{a.id}?download=true",
+                         'uploaded': str(a.create_date)[:16]} for a in atts]
+                return json.dumps({'record': record.display_name, 'count': len(rows),
+                                   'attachments': rows}, default=str)
+            except Exception:
+                _logger.exception("list_attachments failed for %s/%s", model_name, res_id)
+                return "Error listing attachments."
+
+        @tool
         def export_odoo_records(model_name: str, domain: list = None, fields_: list = None, limit: int = None):
             """
             Export matching records to a CSV FILE the user can download — for ANY "export",
@@ -1029,11 +1159,27 @@ class AIAgent(models.AbstractModel):
             if not records:
                 return "No records found matching the domain."
 
-            # A button action fans out to every matched record on confirm; cap it so a broad domain
-            # can't mass-fire (e.g. post every draft invoice) behind a single careless "yes".
-            if action_type == 'method' and len(records) > MAX_METHOD_RECORDS:
-                return (f"That matches {len(records)} records — too many to run '{method_name}' on at once "
-                        f"(limit {MAX_METHOD_RECORDS}). Narrow the domain and propose again.")
+            # Every destructive proposal is capped: a broad domain must be narrowed, never
+            # mass-fired behind a single careless "yes".
+            cap = {'method': MAX_METHOD_RECORDS, 'delete': MAX_DELETE_RECORDS}.get(action_type, MAX_UPDATE_RECORDS)
+            if len(records) > cap:
+                verb = f"run '{method_name}' on" if action_type == 'method' else action_type
+                return (f"That matches {len(records)} records — too many to {verb} at once "
+                        f"(limit {cap}). Narrow the domain and propose again.")
+
+            # BEFORE-VALUES PREVIEW for updates: sample current values of exactly the fields being
+            # changed, so the user confirms a visible before -> after, not a blind write.
+            preview = []
+            if action_type == 'update' and isinstance(values, dict) and values:
+                fields_ok = [f for f in values if f in Model._fields]
+                for rec in records[:5]:
+                    try:
+                        cur = rec.read(fields_ok)[0] if fields_ok else {}
+                        cur.pop('id', None)
+                        preview.append({'id': rec.id, 'name': rec.display_name,
+                                        'current': {k: cur.get(k) for k in fields_ok}})
+                    except Exception:
+                        continue
 
             # Snapshot the exact record ids at proposal time. Confirm executes THESE ids, not a
             # re-run of the domain — so records created/changed between proposal and confirmation
@@ -1054,16 +1200,23 @@ class AIAgent(models.AbstractModel):
                 'record_count': len(records),
                 'proposed_msg_id': _latest_user_msg_id(),
             })
-            return json.dumps({
+            payload = {
                 'status': 'confirmation_required',
                 'action_id': pending.id,
                 'record_count': len(records),
                 'model_name': model_name,
+            }
+            if preview:
+                payload['before_values_sample'] = preview
+                payload['proposed_values'] = values
+            return json.dumps({
+                **payload,
                 'note': (
                     f"PROPOSED ONLY — NOTHING HAS BEEN CHANGED. This would {what} "
                     f"{len(records)} record(s) of {model_name}. "
                     f"You MUST now STOP and end your turn: tell the user exactly what will be "
-                    f"affected ({len(records)} record(s) of {model_name}) and ask them to confirm. "
+                    f"affected ({len(records)} record(s) of {model_name}) — for an update, show the "
+                    f"before_values_sample as a before -> after table — and ask them to confirm. "
                     f"Do NOT call confirm_pending_action in this same turn — it is BLOCKED and will "
                     f"fail, because confirmation is only valid when it comes from the user's own "
                     f"NEXT message. The user's current message does NOT count as confirmation, even "
@@ -1208,14 +1361,18 @@ class AIAgent(models.AbstractModel):
 
                 domain = json.loads(pending.domain)
 
+                # All branches execute the record ids SNAPSHOTTED at proposal time — never a fresh
+                # domain search, so the set the user approved is exactly the set acted on.
+                snap_ids = json.loads(pending.record_ids or '[]')
+
                 if pending.action_type == 'update':
                     err = _check_write_access(Model, model_name, 'write')
                     if err:
                         return err
-                    records = Model.search(domain)
+                    records = Model.browse(snap_ids).exists()
                     if not records:
                         pending.state = 'cancelled'
-                        return "No records match anymore — nothing to update. The proposal has been cancelled."
+                        return "Those records no longer exist — nothing to update. The proposal has been cancelled."
                     values = json.loads(pending.values)
                     records.write(values)
                     pending.state = 'confirmed'
@@ -1225,10 +1382,10 @@ class AIAgent(models.AbstractModel):
                     err = _check_write_access(Model, model_name, 'unlink')
                     if err:
                         return err
-                    records = Model.search(domain)
+                    records = Model.browse(snap_ids).exists()
                     if not records:
                         pending.state = 'cancelled'
-                        return "No records match anymore — nothing to delete. The proposal has been cancelled."
+                        return "Those records no longer exist — nothing to delete. The proposal has been cancelled."
                     count = len(records)
                     records.unlink()
                     pending.state = 'confirmed'
@@ -1238,10 +1395,10 @@ class AIAgent(models.AbstractModel):
                     err = _check_write_access(Model, model_name, 'write')
                     if err:
                         return err
-                    records = Model.search(domain)
+                    records = Model.browse(snap_ids).exists()
                     if not records:
                         pending.state = 'cancelled'
-                        return "No records match anymore — nothing to translate. The proposal has been cancelled."
+                        return "Those records no longer exist — nothing to translate. The proposal has been cancelled."
                     if not hasattr(records, 'update_field_translations'):
                         pending.state = 'cancelled'
                         return "This Odoo version does not support update_field_translations directly."
@@ -1267,8 +1424,7 @@ class AIAgent(models.AbstractModel):
                         return f"'{mname}' is not available on {model_name}."
                     # Execute exactly the records snapshotted at proposal time (not a fresh domain
                     # search), as the requesting user (env, not sudo) so record rules + ACLs apply.
-                    ids = json.loads(pending.record_ids or '[]')
-                    records = Model.browse(ids).exists()
+                    records = Model.browse(snap_ids).exists()
                     if not records:
                         pending.state = 'cancelled'
                         return "Those records no longer exist — nothing to run. The proposal has been cancelled."
@@ -1321,10 +1477,10 @@ class AIAgent(models.AbstractModel):
 
         tools = [
             get_model_schema, resolve_record, read_odoo_records, count_odoo_records,
-            aggregate_odoo_records, read_chatter, export_odoo_records, render_report,
-            schedule_activity, create_odoo_record, update_odoo_records,
-            update_odoo_record_translations, delete_odoo_records, run_odoo_action,
-            confirm_pending_action, cancel_pending_action,
+            aggregate_odoo_records, read_chatter, check_stock, my_activities, list_attachments,
+            export_odoo_records, render_report, schedule_activity, create_odoo_record,
+            update_odoo_records, update_odoo_record_translations, delete_odoo_records,
+            run_odoo_action, confirm_pending_action, cancel_pending_action,
         ]
 
         # Configure LLM
