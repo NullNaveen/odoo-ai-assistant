@@ -208,7 +208,12 @@ class AIAgent(models.AbstractModel):
         "then explicitly ask the user to confirm. Only call confirm_pending_action with that exact action_id after the user has clearly and explicitly agreed "
         "(e.g. 'yes', 'confirm', 'go ahead') in their own words. If the user declines, hesitates, or asks a clarifying question instead of confirming, "
         "call cancel_pending_action instead, or simply wait. NEVER call confirm_pending_action speculatively, and never invent an action_id that wasn't "
-        "returned by an earlier tool call in this conversation."
+        "returned by an earlier tool call in this conversation.\n"
+        "12. COMPLETE-ANSWER RULE: never end a reply with a sentence that PROMISES content you then "
+        "omit — e.g. a line ending in a colon like 'Here are your open activities:'. If you announce a "
+        "list, table, or set of values, that list/table/values MUST appear in the SAME message directly "
+        "below that line. If you still need the data to write it, call the appropriate tool FIRST and "
+        "then give the full answer. A reply that is only a preamble is a failure, not an answer."
     )
 
     # ---------------------------------------------------------------------
@@ -438,6 +443,7 @@ class AIAgent(models.AbstractModel):
                     history.append(SystemMessage(content=note))
 
             final_text = None
+            nudged_incomplete = False
             # Note:  was range(5). Real ERP tasks legitimately need more tool steps than
             # that — "create a sales order for product X, customer Y" is get_model_schema →
             # read product → read customer → create → (confirm), which is already 4-5 calls before
@@ -450,7 +456,29 @@ class AIAgent(models.AbstractModel):
 
                 tool_calls = getattr(response, 'tool_calls', None)
                 if not tool_calls:
-                    final_text = response.content
+                    content = response.content
+                    if isinstance(content, list):
+                        content = "".join(
+                            b.get("text", "") if isinstance(b, dict) else str(b) for b in content
+                        )
+                    stripped = (content or "").strip()
+                    # Guard against a "lazy stop" — some models occasionally end the turn with only
+                    # a preamble that PROMISES content ("Here are your open activities:") and never
+                    # deliver it, or return nothing at all, leaving the user with a dangling intro.
+                    # A bare trailing colon (or empty content) is an unambiguous tell that the
+                    # announced list/table is missing. Give the model ONE corrective turn to finish
+                    # — it then either calls the tool it forgot or writes the full answer from data
+                    # already in history. Only nudge once, so a model that dangles twice terminates.
+                    if (not stripped or stripped.endswith(':')) and not nudged_incomplete:
+                        nudged_incomplete = True
+                        history.append(HumanMessage(content=(
+                            "Your reply was incomplete — you announced an answer but did not include "
+                            "it. Provide the COMPLETE answer now in a single message: if you still "
+                            "need data, call the right tool first, then write the full table / list / "
+                            "values. Do not end your message with a colon."
+                        )))
+                        continue
+                    final_text = content
                     break
 
                 for tool_call in tool_calls:
