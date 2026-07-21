@@ -324,7 +324,7 @@ class AIAgent(models.AbstractModel):
         # built-in (it recites "You have access to exactly N tools" but predates run_odoo_action) and
         # fall back to the current default. A hand-written custom prompt won't recite that enumeration,
         # so it is left untouched.
-        stored = (get_param('odoo_ai_chatbot.ai_system_prompt') or '').strip()
+        stored = (get_param('cortex_assistant.ai_system_prompt') or '').strip()
         is_stale_builtin = 'You have access to exactly' in stored and 'run_odoo_action' not in stored
         system_prompt = self._DEFAULT_SYSTEM_PROMPT if (not stored or is_stale_builtin) else stored
 
@@ -1513,13 +1513,13 @@ class AIAgent(models.AbstractModel):
 
         # Configure LLM
         get_param = env['ir.config_parameter'].sudo().get_param
-        provider = (get_param('odoo_ai_chatbot.ai_provider', 'ollama') or 'ollama').strip()
+        provider = (get_param('cortex_assistant.ai_provider', 'ollama') or 'ollama').strip()
         # Unified settings shared by all providers. The legacy ollama_* keys are used ONLY as a
         # fallback inside the Ollama branch below — they must never leak into a cloud provider (which
         # would misroute OpenAI/Anthropic to a local Ollama URL / token).
-        model = get_param('odoo_ai_chatbot.ai_model') or ''
-        api_key = get_param('odoo_ai_chatbot.ai_api_key') or ''
-        base_url = get_param('odoo_ai_chatbot.ai_base_url') or ''
+        model = get_param('cortex_assistant.ai_model') or ''
+        api_key = get_param('cortex_assistant.ai_api_key') or ''
+        base_url = get_param('cortex_assistant.ai_base_url') or ''
 
         def _need(pkg, label):
             raise UserError(
@@ -1563,15 +1563,15 @@ class AIAgent(models.AbstractModel):
                 _need('langchain-aws (and boto3)', 'Amazon Bedrock')
             boto_client = boto3.client(
                 service_name='bedrock-runtime',
-                region_name=get_param('odoo_ai_chatbot.bedrock_region', 'us-east-1'),
+                region_name=get_param('cortex_assistant.bedrock_region', 'us-east-1'),
                 # `or None` so blank fields fall through to the default AWS credential chain
                 # (IAM instance role, AWS_* env vars) instead of signing with False/False.
-                aws_access_key_id=get_param('odoo_ai_chatbot.bedrock_aws_access_key') or None,
-                aws_secret_access_key=get_param('odoo_ai_chatbot.bedrock_aws_secret_key') or None,
+                aws_access_key_id=get_param('cortex_assistant.bedrock_aws_access_key') or None,
+                aws_secret_access_key=get_param('cortex_assistant.bedrock_aws_secret_key') or None,
             )
             llm = ChatBedrockConverse(
                 client=boto_client,
-                model_id=(model or get_param('odoo_ai_chatbot.bedrock_model')
+                model_id=(model or get_param('cortex_assistant.bedrock_model')
                           or 'anthropic.claude-3-haiku-20240307-v1:0'),
                 temperature=0.15, max_tokens=2048,
             )
@@ -1579,9 +1579,9 @@ class AIAgent(models.AbstractModel):
         else:
             provider = 'ollama'
             # Legacy fallback lives HERE (Ollama only), so a pre-multi-provider install keeps working.
-            base_url = base_url or get_param('odoo_ai_chatbot.ollama_base_url') or 'http://localhost:11434'
-            api_key = api_key or get_param('odoo_ai_chatbot.ollama_api_key') or ''
-            model = model or get_param('odoo_ai_chatbot.ollama_model') or 'llama3'
+            base_url = base_url or get_param('cortex_assistant.ollama_base_url') or 'http://localhost:11434'
+            api_key = api_key or get_param('cortex_assistant.ollama_api_key') or ''
+            model = model or get_param('cortex_assistant.ollama_model') or 'llama3'
             # Sampling tuned for a TOOL-CALLING agent, not chat. reasoning=False disables the hidden
             # chain-of-thought (~3x faster/step). The extra Ollama-native options (presence_penalty=0,
             # so the agent doesn't mangle exact identifiers it must repeat) are bound in

@@ -15,7 +15,7 @@
       Preserved from every prior version: RPC contract, markdown pipeline, copy-to-clipboard on
       code/tables, XSS handling on user text, session history, the server-side confirmation gate.
     -->
-    <t t-name="odoo_ai_chatbot.SystrayItem" owl="1">
+    <t t-name="cortex_assistant.SystrayItem" owl="1">
         <div class="o_systray_ai_chatbot_item">
             <!-- Systray entry: a magic wand that spins on hover (the classic identity). -->
             <button class="o_aichat_trigger"
@@ -44,7 +44,7 @@
                     <div class="o_aichat_head__id">
                         <span class="o_aichat_head__mark">
                             <i t-if="isBubbleTheme" class="fa fa-bolt o_aichat_bolt" aria-hidden="true"/>
-                            <t t-else="" t-call="odoo_ai_chatbot.Mark"/>
+                            <t t-else="" t-call="cortex_assistant.Mark"/>
                         </span>
                         <span class="o_aichat_head__label">AI Assistant</span>
                     </div>
@@ -248,7 +248,7 @@
       The "prompt mark" — two chevrons enclosing a dot. Used by the Studio theme's header.
       currentColor so it is correct on light AND dark chrome.
     -->
-    <t t-name="odoo_ai_chatbot.Mark" owl="1">
+    <t t-name="cortex_assistant.Mark" owl="1">
         <svg class="o_aichat_mark" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false">
             <path d="M6.6 5.4 2.9 10l3.7 4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M13.4 5.4 17.1 10l-3.7 4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>

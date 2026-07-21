@@ -44,9 +44,9 @@ Based on the original "AI Chatbot" by Tarang Kushwaha (LGPL-3).
     ],
     'assets': {
         'web.assets_backend': [
-            'odoo_ai_chatbot/static/src/components/chatbot/*.js',
-            'odoo_ai_chatbot/static/src/components/chatbot/*.xml',
-            'odoo_ai_chatbot/static/src/components/chatbot/*.scss',
+            'cortex_assistant/static/src/components/chatbot/*.js',
+            'cortex_assistant/static/src/components/chatbot/*.xml',
+            'cortex_assistant/static/src/components/chatbot/*.scss',
         ],
     },
     'images': [

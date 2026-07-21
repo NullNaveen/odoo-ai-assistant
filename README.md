@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="odoo_ai_chatbot/static/description/icon.png" alt="AI Assistant icon" width="110"/>
+<img src="cortex_assistant/static/description/icon.png" alt="AI Assistant icon" width="110"/>
 
 # AI Assistant for Odoo
 
@@ -102,7 +102,7 @@ actions. Always as the logged-in user, always within Odoo's access rights.
 - Odoo 17 / 18 / 19 · Python 3.10+
 - An AI backend: an OpenAI or Anthropic API key, a local Ollama server, Amazon Bedrock, or any
   OpenAI-compatible endpoint
-- Python packages from [`odoo_ai_chatbot/requirements.txt`](odoo_ai_chatbot/requirements.txt)
+- Python packages from [`cortex_assistant/requirements.txt`](cortex_assistant/requirements.txt)
 
 ## Install
 
@@ -112,7 +112,7 @@ cd /path/to/your/addons
 git clone https://github.com/NullNaveen/odoo-ai-assistant.git
 
 # 2. Install the Python dependencies (same environment Odoo runs in)
-pip install -r odoo-ai-assistant/odoo_ai_chatbot/requirements.txt
+pip install -r odoo-ai-assistant/cortex_assistant/requirements.txt
 
 # 3. Add the folder to your addons path (odoo.conf):
 #    addons_path = ...,/path/to/your/addons/odoo-ai-assistant
@@ -120,7 +120,7 @@ pip install -r odoo-ai-assistant/odoo_ai_chatbot/requirements.txt
 
 Then in Odoo: **Apps → Update Apps List** → search **AI Assistant** → **Install**.
 
-> The module's technical name is `odoo_ai_chatbot` — keep that folder name inside the repo.
+> The module's technical name is `cortex_assistant` — keep that folder name inside the repo.
 
 ## Configure
 

@@ -44,6 +44,6 @@
         <field name="view_mode">list,form</field>
     </record>
 
-    <menuitem id="menu_ai_chatbot_root" name="AI Chatbot" sequence="10" groups="base.group_system" web_icon="odoo_ai_chatbot,static/description/icon.png"/>
+    <menuitem id="menu_ai_chatbot_root" name="AI Chatbot" sequence="10" groups="base.group_system" web_icon="cortex_assistant,static/description/icon.png"/>
     <menuitem id="menu_ai_chat_sessions" name="Sessions" parent="menu_ai_chatbot_root" action="action_ai_chat_session" sequence="10"/>
 </odoo>
