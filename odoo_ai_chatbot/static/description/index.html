@@ -1,0 +1,120 @@
+<section style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2733;max-width:1000px;margin:0 auto;line-height:1.6">
+
+  <div style="text-align:center;padding:32px 16px 8px">
+    <img src="icon.png" alt="AI Assistant" style="width:96px;height:96px;border-radius:22px"/>
+    <h1 style="font-size:34px;margin:16px 0 6px;color:#5b3d6b">AI Assistant for Odoo</h1>
+    <p style="font-size:19px;color:#5c6773;margin:0">
+      Ask your database anything. Get answers, totals, and actions —
+      <strong>with your own AI</strong>.
+    </p>
+    <p style="margin:14px 0 0">
+      <span style="display:inline-block;background:#efe7f3;color:#5b3d6b;border-radius:20px;padding:5px 14px;margin:3px;font-size:14px">Odoo 17 · 18 · 19</span>
+      <span style="display:inline-block;background:#e5f3f1;color:#0e6b63;border-radius:20px;padding:5px 14px;margin:3px;font-size:14px">Community &amp; Enterprise</span>
+      <span style="display:inline-block;background:#fbeef4;color:#a13a6b;border-radius:20px;padding:5px 14px;margin:3px;font-size:14px">LGPL-3 · Free</span>
+    </p>
+  </div>
+
+  <img src="hero_screenshot.png" alt="Asking the assistant for recent sales orders" style="width:100%;border-radius:14px;border:1px solid #e7e9ee;margin:20px 0"/>
+
+  <p style="font-size:18px;text-align:center;max-width:760px;margin:0 auto 8px">
+    An agentic assistant docked in the Odoo backend. It answers questions from your live
+    database in plain language — and, <strong>with your confirmation</strong>, creates records,
+    edits them, and runs workflow actions. Always as the logged-in user, always within Odoo's
+    access rights.
+  </p>
+
+  <!-- SAFETY -->
+  <div style="background:#f7f4fa;border:1px solid #e9e2f0;border-radius:14px;padding:24px 28px;margin:32px 0">
+    <h2 style="color:#5b3d6b;margin:0 0 10px;font-size:23px">🔒 Safe by design</h2>
+    <p style="margin:0 0 10px">
+      Every <strong>create, update, delete and workflow action is proposed first</strong> and only
+      runs after you explicitly confirm — the gate is enforced in code, not just the prompt. You see
+      the exact records affected and a before/after preview before anything happens.
+    </p>
+    <p style="margin:0">
+      The assistant always acts as the <strong>logged-in user</strong>, so Odoo's own access rights
+      and record rules apply on top. It can never do anything the user could not do by hand.
+    </p>
+  </div>
+
+  <!-- PROVIDERS -->
+  <h2 style="color:#5b3d6b;font-size:23px;margin:32px 0 6px">Your choice of AI — including fully local</h2>
+  <p style="margin:0 0 16px">
+    Bring your own key for <strong>OpenAI</strong>, <strong>Anthropic (Claude)</strong>,
+    <strong>Google Gemini</strong>, any <strong>OpenAI-compatible</strong> endpoint or
+    <strong>Amazon Bedrock</strong> — or point it at a <strong>fully local / self-hosted</strong>
+    server (Ollama, LM Studio, MLX) so your data never leaves your own infrastructure.
+  </p>
+
+  <!-- FEATURE GRID -->
+  <h2 style="color:#5b3d6b;font-size:23px;margin:32px 0 12px">What it does</h2>
+  <table style="width:100%;border-collapse:collapse">
+    <tr>
+      <td style="width:50%;vertical-align:top;padding:10px 14px;border:1px solid #eceef2;border-radius:10px">
+        <strong>Answers from your data</strong><br/>
+        "How many contacts?", "5 most recent sale orders", plus sums, averages and margins computed
+        in the database in one query — never by paging thousands of rows.
+      </td>
+      <td style="width:50%;vertical-align:top;padding:10px 14px;border:1px solid #eceef2">
+        <strong>Knows your screen</strong><br/>
+        "Confirm this order", "export these" — it resolves to the record you have open and respects
+        the active list filters.
+      </td>
+    </tr>
+    <tr>
+      <td style="vertical-align:top;padding:10px 14px;border:1px solid #eceef2">
+        <strong>Takes action, with confirmation</strong><br/>
+        Create &amp; edit records, run workflow buttons (confirm / post / validate / cancel), schedule
+        follow-up activities, translate fields.
+      </td>
+      <td style="vertical-align:top;padding:10px 14px;border:1px solid #eceef2">
+        <strong>Documents &amp; exports</strong><br/>
+        "PDF of this invoice", "give me these as CSV" — real downloadable files, respecting your access
+        rights.
+      </td>
+    </tr>
+    <tr>
+      <td style="vertical-align:top;padding:10px 14px;border:1px solid #eceef2">
+        <strong>Stock &amp; availability</strong><br/>
+        "Can we ship 50 now?", "when does more arrive?" — on hand, reserved, free to ship, incoming
+        receipts with dates.
+      </td>
+      <td style="vertical-align:top;padding:10px 14px;border:1px solid #eceef2">
+        <strong>Finds what you mean</strong><br/>
+        Partial or misspelled names resolve to the right record instead of a false "not found"; reads a
+        record's chatter history on request.
+      </td>
+    </tr>
+  </table>
+
+  <!-- SCREENSHOTS -->
+  <h2 style="color:#5b3d6b;font-size:23px;margin:36px 0 12px">A closer look</h2>
+  <table style="width:100%;border-collapse:separate;border-spacing:10px">
+    <tr>
+      <td style="width:33%;text-align:center">
+        <img src="totals.png" alt="Database totals in one query" style="width:100%;border-radius:10px;border:1px solid #e7e9ee"/>
+        <div style="color:#5c6773;font-size:14px;padding-top:6px">Totals in one query</div>
+      </td>
+      <td style="width:33%;text-align:center">
+        <img src="settings.png" alt="Quick settings" style="width:100%;border-radius:10px;border:1px solid #e7e9ee"/>
+        <div style="color:#5c6773;font-size:14px;padding-top:6px">Simple settings</div>
+      </td>
+      <td style="width:33%;text-align:center">
+        <img src="dark.png" alt="Dark mode" style="width:100%;border-radius:10px;border:1px solid #e7e9ee"/>
+        <div style="color:#5c6773;font-size:14px;padding-top:6px">Light &amp; dark</div>
+      </td>
+    </tr>
+  </table>
+
+  <!-- SETUP -->
+  <h2 style="color:#5b3d6b;font-size:23px;margin:36px 0 6px">Setup</h2>
+  <p style="margin:0 0 16px">
+    Install the module, open <em>Settings → AI Assistant</em>, pick your provider and paste a key (or
+    point it at your local server). That's it — the assistant appears in the systray, ready to chat.
+  </p>
+
+  <div style="text-align:center;color:#8a929c;font-size:14px;border-top:1px solid #eceef2;padding-top:20px;margin-top:36px">
+    Licensed under LGPL-3 · Based on the original "AI Chatbot" by Tarang Kushwaha
+  </div>
+
+</section>
