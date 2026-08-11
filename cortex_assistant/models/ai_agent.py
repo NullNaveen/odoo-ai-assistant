@@ -8,7 +8,7 @@ import re
 from datetime import timedelta
 
 from odoo import models, fields, api
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, AccessError
 
 _logger = logging.getLogger(__name__)
 
@@ -289,6 +289,13 @@ class AIAgent(models.AbstractModel):
         import asyncio
 
         session = self.env['ai.chat.session'].browse(session_id) if session_id else self.env['ai.chat.session']
+        # SECURITY: never operate on a session that is not the caller's own. Both entry points
+        # (the OWL panel's ORM call and the /ai_chatbot/send_message route) pass a client-supplied
+        # session_id, and the ACL on ai.chat.session carries no group, so without this check an
+        # authenticated user — including a PORTAL user, for whom the base.group_user record rules
+        # do not apply — could post into another user's conversation just by changing the integer.
+        if session.exists() and session.user_id and session.user_id.id != self.env.uid:
+            raise AccessError("You do not have access to this conversation.")
         if not session.exists():
             session = self.env['ai.chat.session'].create({})
 

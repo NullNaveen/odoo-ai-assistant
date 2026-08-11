@@ -6,7 +6,7 @@
 
 **Ask your database anything. Get answers, totals, and actions — with your own AI.**
 
-[![Odoo](https://img.shields.io/badge/Odoo-17%20%7C%2018%20%7C%2019-714B67)](#requirements)
+[![Odoo](https://img.shields.io/badge/Odoo-19-714B67)](#requirements)
 [![License: LGPL-3](https://img.shields.io/badge/License-LGPL--3-0E8C8A)](LICENSE)
 [![LLM](https://img.shields.io/badge/AI-OpenAI%20·%20Claude%20·%20Ollama%20·%20Bedrock-A34E78)](#configure)
 
@@ -99,7 +99,7 @@ actions. Always as the logged-in user, always within Odoo's access rights.
 
 ## Requirements
 
-- Odoo 17 / 18 / 19 · Python 3.10+
+- Odoo 19 · Python 3.10+
 - An AI backend: an OpenAI or Anthropic API key, a local Ollama server, Amazon Bedrock, or any
   OpenAI-compatible endpoint
 - Python packages from [`cortex_assistant/requirements.txt`](cortex_assistant/requirements.txt)

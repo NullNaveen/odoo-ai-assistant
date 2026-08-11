@@ -15,18 +15,18 @@ post / validate / cancel).
 
 Safe by design
 --------------
-Every create, update, delete and workflow action is PROPOSED first and only runs after the
+Every update, delete, translate and workflow action is PROPOSED first and only runs after the
 user explicitly confirms — the gate is enforced in code, not just the prompt. The assistant
 always acts as the logged-in user, so Odoo's own access rights and record rules apply on top:
 it can never do anything the user could not do by hand.
 
 Your choice of AI, including fully local
 ----------------------------------------
-Works with OpenAI, Anthropic (Claude), Google Gemini, any OpenAI-compatible endpoint,
+Works with OpenAI, Anthropic (Claude), any OpenAI-compatible endpoint,
 Amazon Bedrock, or a fully local / self-hosted server (Ollama, LM Studio, MLX) — so your
 data can stay on your own infrastructure.
 
-Runs on Odoo 17, 18 and 19 — Community or Enterprise.
+Runs on Odoo 19 — Community or Enterprise.
 
 Based on the original "AI Chatbot" by Tarang Kushwaha (LGPL-3).
     """,
