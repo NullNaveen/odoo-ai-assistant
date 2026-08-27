@@ -31,6 +31,6 @@ class ResConfigSettings(models.TransientModel):
     bedrock_aws_secret_key = fields.Char("AWS Secret Key", password=True, config_parameter='cortex_assistant.bedrock_aws_secret_key')
     bedrock_region = fields.Char("AWS Region", default="us-east-1", config_parameter='cortex_assistant.bedrock_region')
 
-    ai_system_prompt = fields.Text(
+    ai_system_prompt = fields.Char(
         "System Prompt (optional)", config_parameter='cortex_assistant.ai_system_prompt',
         help="Advanced: override the assistant's built-in instructions. Leave blank to use the default.")
