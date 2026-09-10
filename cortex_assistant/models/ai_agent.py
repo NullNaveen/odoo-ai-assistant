@@ -12,6 +12,43 @@ from odoo.exceptions import UserError, AccessError
 
 _logger = logging.getLogger(__name__)
 
+# OpenAI model families that fix temperature at 1 and renamed max_tokens to
+# max_completion_tokens: the GPT-5/6 lines and the o-series. Passing temperature
+# or max_tokens to these returns HTTP 400.
+_OPENAI_FIXED_SAMPLING_RE = re.compile(r'^(gpt-[56]|o[1345](?:-|$))')
+
+# GPT-5.6 / GPT-6 refuse function tools unless reasoning_effort is explicitly 'none':
+#   "Function tools with reasoning_effort are not supported for <model> in
+#    /v1/chat/completions. To use function tools, use /v1/responses or set
+#    reasoning_effort to 'none'."
+# langchain_openai sends a reasoning_effort default for these families and neither
+# None nor 'minimal' suppresses it (the API rejects both), so set 'none' explicitly.
+# Chat Completions is kept deliberately: the Responses API returns content as a list
+# of blocks, while the rest of this module expects a plain string.
+_OPENAI_REASONING_RE = re.compile(r'^(gpt-[56]\.|gpt-6)')
+
+_OPENAI_HTTP_CLIENTS = None
+
+
+def _openai_http_clients():
+    """Plain httpx clients for the OpenAI SDK.
+
+    On some hosts (observed on Odoo.sh) the client the SDK builds for itself
+    raises "TypeError: process() takes no keyword arguments" inside httpx,
+    which the SDK reports as APIConnectionError("Connection error") — blaming
+    the network for a client-side fault. Bare httpx requests to the same
+    endpoint succeed, so hand the SDK its own transport.
+    Built once: each client owns a connection pool.
+    """
+    global _OPENAI_HTTP_CLIENTS
+    if _OPENAI_HTTP_CLIENTS is None:
+        import httpx
+        _OPENAI_HTTP_CLIENTS = {
+            'http_client': httpx.Client(timeout=120),
+            'http_async_client': httpx.AsyncClient(timeout=120),
+        }
+    return _OPENAI_HTTP_CLIENTS
+
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
 from langchain_ollama import ChatOllama
 from langchain_core.tools import tool
@@ -1541,13 +1578,23 @@ class AIAgent(models.AbstractModel):
                 from langchain_openai import ChatOpenAI
             except ImportError:
                 _need('langchain-openai', 'OpenAI')
-            kw = dict(model=model or 'gpt-4o-mini', temperature=0.15, max_tokens=2048)
+            chosen = model or 'gpt-5.6-luna'
+            kw = dict(model=chosen, **_openai_http_clients())
+            if _OPENAI_REASONING_RE.match(chosen.strip().lower()):
+                kw['reasoning_effort'] = 'none'   # required alongside function tools
+            if not _OPENAI_FIXED_SAMPLING_RE.match(chosen.strip().lower()):
+                kw['temperature'] = 0.15
+                kw['max_tokens'] = 2048
             if api_key:
                 kw['api_key'] = api_key
             elif provider == 'openai_compatible':
                 kw['api_key'] = 'not-needed'       # local keyless endpoints (vLLM, LM Studio, …)
-            if base_url:
-                kw['base_url'] = base_url          # required for an OpenAI-compatible endpoint (Groq, vLLM, …)
+            # Only honour base_url where the settings form shows it. The view hides it
+            # for plain 'openai', so a value left over from an Ollama setup would stay
+            # in ir.config_parameter, invisible, and silently redirect every OpenAI call
+            # to an unreachable host.
+            if base_url and provider == 'openai_compatible':
+                kw['base_url'] = base_url          # required for Groq, vLLM, LM Studio, …
             llm = ChatOpenAI(**kw)
 
         elif provider == 'anthropic':
@@ -1555,11 +1602,11 @@ class AIAgent(models.AbstractModel):
                 from langchain_anthropic import ChatAnthropic
             except ImportError:
                 _need('langchain-anthropic', 'Anthropic (Claude)')
-            kw = dict(model=model or 'claude-3-5-sonnet-latest', temperature=0.15, max_tokens=2048)
+            kw = dict(model=model or 'claude-sonnet-5', temperature=0.15, max_tokens=2048)
             if api_key:
                 kw['api_key'] = api_key
-            if base_url:
-                kw['base_url'] = base_url
+            # Same trap as the OpenAI branch: the view hides Base URL for Anthropic,
+            # so a leftover Ollama endpoint would silently capture these calls too.
             llm = ChatAnthropic(**kw)
 
         elif provider == 'bedrock':
