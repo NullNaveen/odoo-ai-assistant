@@ -20,9 +20,26 @@
                                            placeholder="Optional for a local Ollama server"/>
                                 </div>
                                 <div class="row mt8" invisible="ai_provider == 'bedrock'">
+                                    <label for="ai_model_id" string="Model" class="col-lg-4 o_light_label"/>
+                                    <div class="col-lg-8">
+                                        <!-- One field: pick from the fetched list, or type any id and
+                                             Create it. quick-create inherits the selected provider. -->
+                                        <field name="ai_model_id" class="w-100" nolabel="1"
+                                               options="{'no_open': True, 'no_quick_create': False}"
+                                               context="{'default_provider': ai_provider}"
+                                               placeholder="Pick a model, or type an id and press Create"/>
+                                        <field name="ai_model" invisible="1"/>
+                                        <button name="action_refresh_ai_models" type="object"
+                                                string="Refresh models from provider" icon="fa-refresh"
+                                                class="btn-link ps-0"
+                                                help="Saves these settings, then reads the current model list from the selected provider."/>
+                                    </div>
+                                </div>
+                                <!-- Bedrock has no catalogue endpoint: type the id from the AWS console. -->
+                                <div class="row mt8" invisible="ai_provider != 'bedrock'">
                                     <label for="ai_model" string="Model" class="col-lg-4 o_light_label"/>
                                     <field name="ai_model" class="col-lg-8"
-                                           placeholder="e.g. gpt-4o-mini / claude-3-5-sonnet-latest / qwen3:latest"/>
+                                           placeholder="e.g. anthropic.claude-3-5-sonnet-20241022-v2:0"/>
                                 </div>
                                 <div class="row mt8" invisible="ai_provider not in ('ollama', 'openai_compatible')">
                                     <label for="ai_base_url" string="Base URL" class="col-lg-4 o_light_label"/>

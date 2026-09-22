@@ -1,6 +1,6 @@
 {
     'name': 'AI Assistant',
-    'version': '19.0.2.6.1',
+    'version': '19.0.3.0.0',
     'category': 'Productivity',
     'summary': 'In-app AI assistant that reads, totals and edits your Odoo data — on your own LLM, with a confirmation gate.',
     'description': """
@@ -55,6 +55,7 @@ Based on the original "AI Chatbot" by Tarang Kushwaha (LGPL-3).
         'static/description/settings.png',
         'static/description/dark.png',
     ],
+    'post_init_hook': 'post_init_seed_models',
     'installable': True,
     'application': True,
     'license': 'LGPL-3',
