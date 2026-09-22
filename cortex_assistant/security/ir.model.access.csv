@@ -3,3 +3,5 @@ access_ai_chat_session,ai.chat.session,model_ai_chat_session,base.group_user,1,1
 access_ai_chat_message,ai.chat.message,model_ai_chat_message,base.group_user,1,1,1,1
 access_ai_chatbot_agent,ai.chatbot.agent,model_ai_chatbot_agent,base.group_user,1,0,0,0
 access_ai_pending_action_user,ai.pending.action.user,model_ai_pending_action,base.group_user,1,1,1,1
+access_ai_model_option_user,ai.model.option.user,model_ai_model_option,base.group_user,1,0,0,0
+access_ai_model_option_system,ai.model.option.system,model_ai_model_option,base.group_system,1,1,1,1

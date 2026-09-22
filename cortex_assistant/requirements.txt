@@ -13,3 +13,8 @@ langchain-aws>=0.2
 
 # langgraph needs a newer typing_extensions than some base images ship.
 typing_extensions>=4.13
+
+# OpenAI and any OpenAI-compatible endpoint (imported lazily by that provider branch).
+langchain-openai>=0.2
+# Anthropic (Claude), likewise lazy.
+langchain-anthropic>=0.2
