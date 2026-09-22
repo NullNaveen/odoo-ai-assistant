@@ -1,5 +1,7 @@
 from odoo import models, fields
 
+SYSTEM_PROMPT_PARAM = 'cortex_assistant.ai_system_prompt'
+
 
 class ResConfigSettings(models.TransientModel):
     _inherit = 'res.config.settings'
@@ -32,5 +34,18 @@ class ResConfigSettings(models.TransientModel):
     bedrock_region = fields.Char("AWS Region", default="us-east-1", config_parameter='cortex_assistant.bedrock_region')
 
     ai_system_prompt = fields.Text(
-        "System Prompt (optional)", config_parameter='cortex_assistant.ai_system_prompt',
+        "System Prompt (optional)",
         help="Advanced: override the assistant's built-in instructions. Leave blank to use the default.")
+
+    # res.config.settings only accepts boolean/integer/float/char/selection/many2one/datetime for
+    # `config_parameter`, so this multi-line Text is read and written by hand. With config_parameter
+    # Odoo 19 raises "Field res.config.settings.ai_system_prompt must have type ..." in
+    # _get_classified_fields and the whole Settings page fails to open (seen on 19.0+e, 2026-09-22).
+    def get_values(self):
+        res = super().get_values()
+        res['ai_system_prompt'] = self.env['ir.config_parameter'].sudo().get_param(SYSTEM_PROMPT_PARAM, '')
+        return res
+
+    def set_values(self):
+        super().set_values()
+        self.env['ir.config_parameter'].sudo().set_param(SYSTEM_PROMPT_PARAM, self.ai_system_prompt or '')
