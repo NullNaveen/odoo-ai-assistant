@@ -559,8 +559,8 @@ export class AIChatbot extends Component {
     }
 }
 
-AIChatbot.template = "cortex_assistant.SystrayItem";
+AIChatbot.template = "odoo_ai_chatbot.SystrayItem";
 
 export const systrayItem = { Component: AIChatbot };
 
-registry.category("systray").add("cortex_assistant.AIChatbot", systrayItem, { sequence: 100 });
+registry.category("systray").add("odoo_ai_chatbot.AIChatbot", systrayItem, { sequence: 100 });
