@@ -9,7 +9,7 @@ from .ai_model_option import PROVIDERS
 
 _logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT_PARAM = 'cortex_assistant.ai_system_prompt'
+SYSTEM_PROMPT_PARAM = 'odoo_ai_chatbot.ai_system_prompt'
 
 # Offered before "Refresh models" has ever run, so the picker is never empty.
 FALLBACK_MODELS = {
@@ -38,17 +38,17 @@ class ResConfigSettings(models.TransientModel):
 
     ai_provider = fields.Selection(
         PROVIDERS, string="AI Provider", default='ollama',
-        config_parameter='cortex_assistant.ai_provider')
+        config_parameter='odoo_ai_chatbot.ai_provider')
 
     # Unified settings — one API key, one model, one optional base URL, used by every provider.
     ai_api_key = fields.Char(
-        "API Key", password=True, config_parameter='cortex_assistant.ai_api_key',
+        "API Key", password=True, config_parameter='odoo_ai_chatbot.ai_api_key',
         help="Your provider API key. Optional for a local Ollama server; not used by Bedrock.")
     # Deliberately a Char, not a Selection: an id the provider does not list (a
     # fine-tune, a brand-new release) must still be typeable, and a Selection
     # blanks — then silently wipes on Save — any value missing from its options.
     ai_model = fields.Char(
-        "Model", config_parameter='cortex_assistant.ai_model',
+        "Model", config_parameter='odoo_ai_chatbot.ai_model',
         help="The model id sent to the provider. Pick one from the list, or type any id. "
              "A tool-calling capable model is required.")
     # The picker. A Many2one domain is evaluated client-side against the field
@@ -61,15 +61,15 @@ class ResConfigSettings(models.TransientModel):
         help="Choose one of your provider's models, or type any id and pick "
              "Create to use it. 'Refresh models' pulls the current list.")
     ai_base_url = fields.Char(
-        "Base URL", config_parameter='cortex_assistant.ai_base_url',
+        "Base URL", config_parameter='odoo_ai_chatbot.ai_base_url',
         help="Ollama server URL (e.g. http://localhost:11434), or the endpoint for an "
              "OpenAI-compatible provider (Groq, OpenRouter, Together, vLLM, LM Studio, …). "
              "Leave blank to use OpenAI/Anthropic defaults.")
 
     # Amazon Bedrock uses AWS credentials instead of an API key.
-    bedrock_aws_access_key = fields.Char("AWS Access Key", password=True, config_parameter='cortex_assistant.bedrock_aws_access_key')
-    bedrock_aws_secret_key = fields.Char("AWS Secret Key", password=True, config_parameter='cortex_assistant.bedrock_aws_secret_key')
-    bedrock_region = fields.Char("AWS Region", default="us-east-1", config_parameter='cortex_assistant.bedrock_region')
+    bedrock_aws_access_key = fields.Char("AWS Access Key", password=True, config_parameter='odoo_ai_chatbot.bedrock_aws_access_key')
+    bedrock_aws_secret_key = fields.Char("AWS Secret Key", password=True, config_parameter='odoo_ai_chatbot.bedrock_aws_secret_key')
+    bedrock_region = fields.Char("AWS Region", default="us-east-1", config_parameter='odoo_ai_chatbot.bedrock_region')
 
     ai_system_prompt = fields.Text(
         "System Prompt (optional)",
@@ -94,8 +94,8 @@ class ResConfigSettings(models.TransientModel):
         res = super().get_values()
         icp = self.env['ir.config_parameter'].sudo()
         res['ai_system_prompt'] = icp.get_param(SYSTEM_PROMPT_PARAM, '')
-        name = (icp.get_param('cortex_assistant.ai_model') or '').strip()
-        provider = icp.get_param('cortex_assistant.ai_provider') or 'ollama'
+        name = (icp.get_param('odoo_ai_chatbot.ai_model') or '').strip()
+        provider = icp.get_param('odoo_ai_chatbot.ai_provider') or 'ollama'
         option = False
         if name:
             Option = self.env['ai.model.option'].sudo()
@@ -173,9 +173,9 @@ class ResConfigSettings(models.TransientModel):
         self.execute()
 
         icp = self.env['ir.config_parameter'].sudo()
-        provider = icp.get_param('cortex_assistant.ai_provider') or 'ollama'
-        api_key = icp.get_param('cortex_assistant.ai_api_key') or ''
-        base_url = icp.get_param('cortex_assistant.ai_base_url') or ''
+        provider = icp.get_param('odoo_ai_chatbot.ai_provider') or 'ollama'
+        api_key = icp.get_param('odoo_ai_chatbot.ai_api_key') or ''
+        base_url = icp.get_param('odoo_ai_chatbot.ai_base_url') or ''
 
         try:
             ids = self._fetch_provider_models(provider, api_key, base_url)
@@ -225,7 +225,7 @@ class ResConfigSettings(models.TransientModel):
         # Drop ids the provider no longer offers, so the list cannot go stale.
         # Keep whatever is currently configured, even if delisted, so the saved
         # setting stays visible in the picker.
-        current = self.env['ir.config_parameter'].sudo().get_param('cortex_assistant.ai_model')
+        current = self.env['ir.config_parameter'].sudo().get_param('odoo_ai_chatbot.ai_model')
         stale = existing.filtered(lambda o: o.name not in wanted and o.name != current)
         if stale:
             stale.unlink()
