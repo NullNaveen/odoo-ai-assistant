@@ -1,4 +1,4 @@
-from odoo import fields, models
+from odoo import api, fields, models
 
 PROVIDERS = [
     ('ollama', 'Ollama (local)'),
@@ -20,11 +20,21 @@ class AiModelOption(models.Model):
     """
     _name = 'ai.model.option'
     _description = 'AI Model Option'
-    _order = 'provider, name'
+    # Newest first: the picker shows its first few rows, and those should be the latest models.
+    _order = 'provider, released desc nulls last, name'
     _rec_name = 'name'
 
     name = fields.Char("Model ID", required=True, index=True)
     provider = fields.Selection(PROVIDERS, required=True, index=True)
+    released = fields.Datetime(
+        "Released", readonly=True,
+        help="When the provider published this model, as its own catalogue reports it.")
+
+    @api.depends('name', 'released')
+    def _compute_display_name(self):
+        # The month is what tells "gpt-6-sol" from "gpt-5-sol" at a glance.
+        for option in self:
+            option.display_name = f"{option.name} ({option.released:%b %Y})" if option.released else option.name
 
     # Odoo 19 dropped list-form _sql_constraints: add_to_registry() only logs
     # "no longer supported" and never builds the index, so the constraint would

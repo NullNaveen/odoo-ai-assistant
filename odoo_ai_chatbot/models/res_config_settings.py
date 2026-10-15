@@ -1,4 +1,6 @@
 import logging
+import re
+from datetime import datetime, timezone
 
 import requests
 
@@ -13,7 +15,7 @@ SYSTEM_PROMPT_PARAM = 'odoo_ai_chatbot.ai_system_prompt'
 
 # Offered before "Refresh models" has ever run, so the picker is never empty.
 FALLBACK_MODELS = {
-    'openai': ['gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-6-astra'],
+    'openai': ['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna', 'gpt-6-astra', 'gpt-5.6-luna'],
     'anthropic': ['claude-sonnet-5', 'claude-opus-5'],
     'ollama': ['qwen3:latest'],
     'openai_compatible': [],
@@ -26,6 +28,31 @@ _NON_CHAT_HINTS = (
     'embed', 'whisper', 'tts', 'audio', 'transcribe', 'realtime', 'moderation',
     'image', 'dall-e', 'rerank', 'guard', 'similarity',
 )
+# OpenAI ids that exist but cannot run this assistant (Chat Completions + tools): legacy
+# completion models, ChatGPT aliases, live/video models and Responses-API-only lines.
+_OPENAI_UNSUPPORTED = (
+    'babbage', 'davinci', 'instruct', 'chatgpt', 'chat-latest', 'gpt-live', 'sora',
+    'search', 'computer-use', 'codex', 'deep-research', '-pro',
+)
+# A dated snapshot ("gpt-5.5-2026-04-23", "gpt-3.5-turbo-0125") repeats an alias that is listed.
+_SNAPSHOT = re.compile(r'^(?P<base>.+)-(?:\d{4}-\d{2}-\d{2}|\d{4})$')
+
+
+def _from_epoch(value):
+    if isinstance(value, (int, float)) and value > 0:
+        return datetime.fromtimestamp(value, timezone.utc).replace(tzinfo=None)
+    return None
+
+
+def _from_iso(value):
+    # Ollama stamps nanoseconds, which fromisoformat rejects; Odoo stores naive UTC.
+    if not value:
+        return None
+    try:
+        stamp = datetime.fromisoformat(re.sub(r'(\.\d{6})\d+', r'\1', str(value).replace('Z', '+00:00')))
+    except ValueError:
+        return None
+    return stamp.astimezone(timezone.utc).replace(tzinfo=None) if stamp.tzinfo else stamp
 
 DEFAULT_OPENAI_BASE = 'https://api.openai.com/v1'
 DEFAULT_ANTHROPIC_BASE = 'https://api.anthropic.com/v1'
@@ -130,7 +157,7 @@ class ResConfigSettings(models.TransientModel):
                 rec.ai_model_id = False
 
     def _fetch_provider_models(self, provider, api_key, base_url):
-        """Return the model ids the provider currently offers.
+        """Return (model id, release time or None) for every model the provider offers.
 
         Each provider publishes its own catalogue, so a newly released model
         shows up here with no code change.
@@ -139,7 +166,7 @@ class ResConfigSettings(models.TransientModel):
             root = (base_url or DEFAULT_OLLAMA_BASE).rstrip('/')
             resp = requests.get(f'{root}/api/tags', timeout=FETCH_TIMEOUT)
             resp.raise_for_status()
-            return [m['name'] for m in resp.json().get('models', []) if m.get('name')]
+            return [(m['name'], _from_iso(m.get('modified_at'))) for m in resp.json().get('models', []) if m.get('name')]
 
         if provider == 'anthropic':
             root = (base_url or DEFAULT_ANTHROPIC_BASE).rstrip('/')
@@ -148,7 +175,7 @@ class ResConfigSettings(models.TransientModel):
                 headers={'x-api-key': api_key, 'anthropic-version': '2023-06-01'},
                 timeout=FETCH_TIMEOUT)
             resp.raise_for_status()
-            return [m['id'] for m in resp.json().get('data', []) if m.get('id')]
+            return [(m['id'], _from_iso(m.get('created_at'))) for m in resp.json().get('data', []) if m.get('id')]
 
         if provider in ('openai', 'openai_compatible'):
             root = (base_url or DEFAULT_OPENAI_BASE).rstrip('/')
@@ -160,7 +187,7 @@ class ResConfigSettings(models.TransientModel):
                 headers={'Authorization': f'Bearer {api_key or "not-needed"}'},
                 timeout=FETCH_TIMEOUT)
             resp.raise_for_status()
-            return [m['id'] for m in resp.json().get('data', []) if m.get('id')]
+            return [(m['id'], _from_epoch(m.get('created'))) for m in resp.json().get('data', []) if m.get('id')]
 
         raise UserError(
             "Amazon Bedrock does not publish a model list over this API. "
@@ -178,7 +205,7 @@ class ResConfigSettings(models.TransientModel):
         base_url = icp.get_param('odoo_ai_chatbot.ai_base_url') or ''
 
         try:
-            ids = self._fetch_provider_models(provider, api_key, base_url)
+            fetched = self._fetch_provider_models(provider, api_key, base_url)
         except UserError:
             raise
         except Exception as exc:
@@ -190,37 +217,50 @@ class ResConfigSettings(models.TransientModel):
                 f"{type(exc).__name__}: {exc}"
             ) from exc
 
-        chat_ids = sorted({
-            m for m in ids
-            if not any(hint in m.lower() for hint in _NON_CHAT_HINTS)
-        })
-        if not chat_ids:
+        ranked = self._rank_models(provider, fetched)
+        if not ranked:
             raise UserError(
-                f"'{provider}' returned {len(ids)} models, but none look like chat models.")
+                f"'{provider}' returned {len(fetched)} models, but none can run this assistant.")
 
-        added = self._sync_model_options(provider, chat_ids)
+        added = self._sync_model_options(provider, ranked)
+        newest = ', '.join(name for name, _released in ranked[:3])
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
                 'title': "Model list updated",
-                'message': f"{len(chat_ids)} models available from '{provider}' ({added} new).",
+                'message': f"{len(ranked)} models from '{provider}' ({added} new). Newest: {newest}.",
                 'type': 'success',
                 'next': {'type': 'ir.actions.client', 'tag': 'reload'},
             },
         }
 
     @api.model
-    def _sync_model_options(self, provider, model_ids):
-        """Make ai.model.option match model_ids for this provider. Returns new count."""
+    def _rank_models(self, provider, fetched):
+        """Models that can run this assistant, newest first, without dated duplicates."""
+        hints = _NON_CHAT_HINTS + (_OPENAI_UNSUPPORTED if provider == 'openai' else ())
+        usable = {name: released for name, released in fetched
+                  if not any(hint in name.lower() for hint in hints)}
+        usable = {name: released for name, released in usable.items()
+                  if not ((snap := _SNAPSHOT.match(name)) and snap['base'] in usable)}
+        ranked = sorted(usable.items())                                        # ties stay alphabetical
+        ranked.sort(key=lambda item: item[1] or datetime.min, reverse=True)   # undated go last
+        return ranked
+
+    @api.model
+    def _sync_model_options(self, provider, ranked):
+        """Make ai.model.option match the ranked (id, released) list. Returns new count."""
         Option = self.env['ai.model.option'].sudo()
         existing = Option.search([('provider', '=', provider)])
         by_name = {o.name: o for o in existing}
 
-        wanted = set(model_ids)
-        to_create = [{'name': m, 'provider': provider} for m in model_ids if m not in by_name]
+        wanted = dict(ranked)
+        to_create = [{'name': m, 'provider': provider, 'released': r} for m, r in ranked if m not in by_name]
         if to_create:
             Option.create(to_create)
+        for name, option in by_name.items():
+            if name in wanted and option.released != wanted[name]:
+                option.released = wanted[name]
 
         # Drop ids the provider no longer offers, so the list cannot go stale.
         # Keep whatever is currently configured, even if delisted, so the saved

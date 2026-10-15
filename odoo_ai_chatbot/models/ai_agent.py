@@ -27,7 +27,7 @@ _OPENAI_FIXED_SAMPLING_RE = re.compile(r'^(gpt-[56]|o[1345](?:-|$))')
 # of blocks, while the rest of this module expects a plain string.
 _OPENAI_REASONING_RE = re.compile(r'^(gpt-[56]\.|gpt-6)')
 
-_OPENAI_HTTP_CLIENTS = None
+_OPENAI_SYNC_CLIENT = None
 
 
 def _openai_http_clients():
@@ -37,16 +37,17 @@ def _openai_http_clients():
     arguments" inside httpx on some Odoo runtimes, surfacing as a misleading
     APIConnectionError("Connection error"). A plain httpx.Client works — bare
     httpx requests succeed there — so hand the SDK its own transport.
-    Built once: each client owns a connection pool.
+
+    The sync client is built once (it owns a connection pool). The async one is
+    built per message: each message runs in its own asyncio.run() loop, and a
+    pooled AsyncClient reused after its loop closed fails every later message
+    in that worker with "RuntimeError: Event loop is closed".
     """
-    global _OPENAI_HTTP_CLIENTS
-    if _OPENAI_HTTP_CLIENTS is None:
-        import httpx
-        _OPENAI_HTTP_CLIENTS = {
-            'http_client': httpx.Client(timeout=120),
-            'http_async_client': httpx.AsyncClient(timeout=120),
-        }
-    return _OPENAI_HTTP_CLIENTS
+    global _OPENAI_SYNC_CLIENT
+    import httpx
+    if _OPENAI_SYNC_CLIENT is None:
+        _OPENAI_SYNC_CLIENT = httpx.Client(timeout=120)
+    return {'http_client': _OPENAI_SYNC_CLIENT, 'http_async_client': httpx.AsyncClient(timeout=120)}
 
 
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage

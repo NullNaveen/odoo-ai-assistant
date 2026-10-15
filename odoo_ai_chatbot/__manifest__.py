@@ -1,6 +1,6 @@
 {
     'name': 'AI Assistant',
-    'version': '19.0.3.0.0',
+    'version': '19.0.3.1.0',
     'category': 'Productivity',
     'summary': 'In-app AI assistant that reads, totals and edits your Odoo data — on your own LLM, with a confirmation gate.',
     'description': """
